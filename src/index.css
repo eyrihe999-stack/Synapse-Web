@@ -1,0 +1,87 @@
+@import "tailwindcss";
+
+@theme {
+  /* ── Notion-inspired warm palette ── */
+  --color-bg-primary: #f7f6f3;
+  --color-bg-secondary: #efeee8;
+  --color-bg-card: #ffffff;
+  --color-bg-elevated: #f7f6f3;
+  --color-bg-hover: #f1f0ea;
+
+  --color-border-default: #e3e2dc;
+  --color-border-bright: #d4d3cc;
+
+  /* 主色：Notion 蓝 */
+  --color-accent: #2383e2;
+  --color-accent-cyan: #2383e2;
+  --color-accent-purple: #2383e2;
+  --color-accent-blue: #2383e2;
+
+  /* 语义色（取自 Notion 色板） */
+  --color-accent-green: #448361;
+  --color-accent-red: #d44c47;
+  --color-accent-amber: #cb912f;
+
+  /* 文字：Notion 的暖灰色调 */
+  --color-text-primary: #373530;
+  --color-text-secondary: #787774;
+  --color-text-muted: #a8a6a0;
+
+  --font-sans: "Inter", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", monospace;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-border-bright) transparent;
+}
+
+body {
+  margin: 0;
+  background: var(--color-bg-primary);
+  color: var(--color-text-primary);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── Card elevations ── */
+.glow-cyan,
+.glow-purple {
+  box-shadow: 0 1px 3px rgba(55, 53, 48, 0.06), 0 2px 10px rgba(55, 53, 48, 0.04);
+}
+
+/* ── augmented-ui card — the sci-fi signature ── */
+.aug-card {
+  --aug-tl: 12px;
+  --aug-tr: 3px;
+  --aug-br: 12px;
+  --aug-bl: 3px;
+  --aug-border-all: 1px;
+  --aug-border-bg: var(--color-border-default);
+  --aug-border-opacity: 1;
+  --aug-inlay-all: 0px;
+  background: var(--color-bg-card);
+}
+
+.aug-card-cyan,
+.aug-card-purple {
+  --aug-border-bg: var(--color-accent);
+  --aug-border-opacity: 0.3;
+}
+
+.aug-card:hover {
+  --aug-border-opacity: 0.5;
+  box-shadow: 0 1px 4px rgba(55, 53, 48, 0.08), 0 4px 16px rgba(55, 53, 48, 0.05);
+}
+
+/* ── Endpoint badge — monospace tech label ── */
+.endpoint-badge {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.02em;
+  color: var(--color-text-muted);
+  background: var(--color-bg-elevated);
+  border: 1px solid var(--color-border-default);
+  border-radius: 4px;
+  padding: 2px 6px;
+}
