@@ -1,4 +1,4 @@
-import client from './client';
+import client, { ensureValidToken } from './client';
 import { useAuthStore } from '@/store/auth';
 import type {
   BaseResponse,
@@ -78,17 +78,27 @@ export const chatApi = {
     const controller = new AbortController();
     const token = useAuthStore.getState().accessToken;
 
-    fetch(`/api/v2/orgs/${slug}/agents/${ownerUid}/${agentSlug}/chat`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Accept: 'text/event-stream',
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      },
-      body: JSON.stringify({ ...data, stream: true }),
-      signal: controller.signal,
-    })
+    const doFetch = (bearerToken: string | null) =>
+      fetch(`/api/v2/orgs/${slug}/agents/${ownerUid}/${agentSlug}/chat`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'text/event-stream',
+          ...(bearerToken ? { Authorization: `Bearer ${bearerToken}` } : {}),
+        },
+        body: JSON.stringify({ ...data, stream: true }),
+        signal: controller.signal,
+      });
+
+    doFetch(token)
       .then(async (response) => {
+        // On 401, refresh token and retry once
+        if (response.status === 401) {
+          const newToken = await ensureValidToken();
+          if (!newToken) return;
+          response = await doFetch(newToken);
+        }
+
         if (!response.ok || !response.body) {
           const text = await response.text();
           try {

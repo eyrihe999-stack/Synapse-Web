@@ -18,8 +18,34 @@ client.interceptors.request.use((config: InternalAxiosRequestConfig) => {
   return config;
 });
 
-// Handle 401 → try refresh
+// Shared refresh-with-dedup logic, also used by fetch-based streaming
 let refreshing: Promise<void> | null = null;
+
+export async function ensureValidToken(): Promise<string | null> {
+  const store = useAuthStore.getState();
+  if (!store.refreshToken) {
+    store.logout();
+    useOrgStore.getState().clearOrg();
+    window.location.replace('/auth');
+    return null;
+  }
+
+  if (!refreshing) {
+    refreshing = store.refresh().finally(() => { refreshing = null; });
+  }
+
+  try {
+    await refreshing;
+    return useAuthStore.getState().accessToken;
+  } catch {
+    store.logout();
+    useOrgStore.getState().clearOrg();
+    window.location.replace('/auth');
+    return null;
+  }
+}
+
+// Handle 401 → try refresh
 
 client.interceptors.response.use(
   (res) => res,
@@ -30,29 +56,10 @@ client.interceptors.response.use(
     // Don't retry auth endpoints
     if (original.url?.includes('/auth/')) return Promise.reject(err);
 
-    const store = useAuthStore.getState();
-    if (!store.refreshToken) {
-      store.logout();
-      useOrgStore.getState().clearOrg();
-      window.location.replace('/auth');
-      return Promise.reject(err);
-    }
-
-    if (!refreshing) {
-      refreshing = store.refresh().finally(() => { refreshing = null; });
-    }
-
-    try {
-      await refreshing;
-      const newToken = useAuthStore.getState().accessToken;
-      if (newToken) {
-        original.headers.Authorization = `Bearer ${newToken}`;
-        return client(original);
-      }
-    } catch {
-      store.logout();
-      useOrgStore.getState().clearOrg();
-      window.location.replace('/auth');
+    const newToken = await ensureValidToken();
+    if (newToken) {
+      original.headers.Authorization = `Bearer ${newToken}`;
+      return client(original);
     }
     return Promise.reject(err);
   },
