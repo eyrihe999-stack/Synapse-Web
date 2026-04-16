@@ -17,6 +17,7 @@ import { Send, Plus, CheckCircle, XCircle, RotateCcw, Bot, Clock, User as UserIc
 
 const AGENT_TYPE_LABELS: Record<AgentType, string> = {
   chat: '对话',
+  tool: '工具',
 };
 
 const REVOKE_REASON_LABELS: Record<string, string> = {
@@ -155,10 +156,12 @@ export function PublishesPage() {
                       <p className="text-[14px] font-medium text-text-primary">{p.agent_display_name || `Agent #${p.agent_id}`}</p>
                       {p.agent_type && <StatusBadge status={p.agent_type} />}
                       <StatusBadge status={p.status} />
+                      {p.agent_version && <span className="text-[10px] font-mono text-text-muted px-1.5 py-0.5 rounded bg-[#f1f1ef] border border-[#e3e2dc]">{p.agent_version}</span>}
                     </div>
-                    {p.agent_slug && (
-                      <p className="text-[11px] text-text-muted font-mono mt-0.5">{p.agent_slug}</p>
-                    )}
+                    <div className="flex items-center gap-2 mt-0.5">
+                      {p.agent_slug && <span className="text-[11px] text-text-muted font-mono">{p.agent_slug}</span>}
+                      {p.agent_updated_at && <span className="text-[10px] text-text-muted">Agent 更新于 {formatTs(p.agent_updated_at)}</span>}
+                    </div>
                   </div>
                 </div>
                 <div className="flex items-center gap-1.5 shrink-0">

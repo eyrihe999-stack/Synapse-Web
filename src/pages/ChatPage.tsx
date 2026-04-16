@@ -24,6 +24,7 @@ import {
 
 const AGENT_TYPE_LABELS: Record<string, string> = {
   chat: '对话',
+  tool: '工具',
 };
 
 export function ChatPage() {
@@ -106,6 +107,7 @@ function AgentPicker({ slug }: { slug: string }) {
                     <div className="flex items-center gap-1.5 mt-1 flex-wrap">
                       {p.agent_type && <StatusBadge status={p.agent_type} />}
                       {p.agent_context_mode && <StatusBadge status={p.agent_context_mode} />}
+                      {p.agent_version && <span className="text-[10px] font-mono text-text-muted px-1.5 py-0.5 rounded bg-[#f1f1ef] border border-[#e3e2dc]">{p.agent_version}</span>}
                       {p.agent_slug && <span className="text-[10px] text-text-muted font-mono truncate">{p.agent_slug}</span>}
                     </div>
                   </div>
@@ -128,7 +130,7 @@ function AgentPicker({ slug }: { slug: string }) {
                 {/* Footer: CTA */}
                 <div className="flex items-center justify-between mt-3 pt-2.5 border-t border-border-default">
                   <span className="text-[11px] text-text-muted">
-                    {formatTs(p.created_at)} 发布
+                    更新于 {formatTs(p.agent_updated_at ?? p.created_at)}
                   </span>
                   <span className="inline-flex items-center gap-1 text-[12px] text-accent font-medium group-hover:translate-x-0.5 transition-transform">
                     开始{AGENT_TYPE_LABELS[p.agent_type ?? ''] ?? '交互'}

@@ -12,6 +12,7 @@ const styles: Record<string, string> = {
   banned: 'text-[#d44c47] bg-[#faecec] border-[#ebd2d2]',
   dissolved: 'text-[#d44c47] bg-[#faecec] border-[#ebd2d2]',
   chat: 'text-[#2383e2] bg-[#e9f3f7] border-[#c8dfe8]',
+  tool: 'text-[#cb912f] bg-[#faf3dd] border-[#eddcb5]',
   stateless: 'text-[#2383e2] bg-[#e9f3f7] border-[#c8dfe8]',
   stateful: 'text-[#9065b0] bg-[#f6f3f8] border-[#e0d5e8]',
   owner: 'text-[#9065b0] bg-[#f6f3f8] border-[#e0d5e8]',

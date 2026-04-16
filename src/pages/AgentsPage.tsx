@@ -12,11 +12,12 @@ import { toast } from '@/components/ui/Toast';
 import { getErrorMessage } from '@/lib/api-helpers';
 import { formatTs } from '@/lib/format';
 import type { AgentResponse, AgentType, CreateAgentRequest, UpdateAgentRequest } from '@/types/api';
-import { Plus, Bot, Trash2, Pencil, Globe, Lock, Clock, Hash, MessageSquare, Link, Shield, Layers } from 'lucide-react';
+import { Plus, Bot, Trash2, Pencil, Globe, Lock, Clock, Hash, MessageSquare, Wrench, Link, Shield, Layers } from 'lucide-react';
 
 /** Agent 类型显示标签 */
 const AGENT_TYPE_LABELS: Record<AgentType, string> = {
   chat: '对话',
+  tool: '工具',
 };
 
 export function AgentsPage() {
@@ -91,6 +92,7 @@ export function AgentsPage() {
                         <StatusBadge status={ag.agent_type} />
                         <StatusBadge status={ag.status} />
                         <StatusBadge status={ag.context_mode} />
+                        <span className="text-[10px] font-mono text-text-muted px-1.5 py-0.5 rounded bg-[#f1f1ef] border border-[#e3e2dc]">{ag.version}</span>
                       </div>
                       <p className="text-[11px] text-text-muted font-mono truncate mt-0.5">{ag.slug}</p>
                     </div>
@@ -178,6 +180,7 @@ function AgentDetail({ agent: ag }: { agent: AgentResponse }) {
         <InfoRow label="Slug" value={ag.slug} mono />
         <InfoRow label="显示名称" value={ag.display_name} />
         <InfoRow label="类型" value={AGENT_TYPE_LABELS[ag.agent_type] ?? ag.agent_type} />
+        <InfoRow label="版本" value={ag.version} mono />
         <InfoRow label="描述" value={ag.description || '—'} />
         <InfoRow label="端点 URL" value={ag.endpoint_url} mono />
         <InfoRow label="上下文模式" value={ag.context_mode === 'stateless' ? '无状态（平台管理历史）' : '有状态（Agent 自管理）'} />
@@ -218,6 +221,7 @@ function CreateAgentModal({ open, onClose }: { open: boolean; onClose: () => voi
     display_name: '',
     description: '',
     agent_type: 'chat',
+    version: '0.1.0',
     endpoint_url: '',
     context_mode: 'stateless',
     max_context_rounds: 20,
@@ -249,7 +253,7 @@ function CreateAgentModal({ open, onClose }: { open: boolean; onClose: () => voi
     if (result) {
       await fetchMyAgents();
       onClose();
-      setForm({ slug: '', display_name: '', description: '', agent_type: 'chat', endpoint_url: '', context_mode: 'stateless', max_context_rounds: 20, auth_token: '', timeout_seconds: 30, icon_url: '', tags: [] });
+      setForm({ slug: '', display_name: '', description: '', agent_type: 'chat', version: '0.1.0', endpoint_url: '', context_mode: 'stateless', max_context_rounds: 20, auth_token: '', timeout_seconds: 30, icon_url: '', tags: [] });
       setTagsInput('');
     }
     setLoading(false);
@@ -288,13 +292,19 @@ function CreateAgentModal({ open, onClose }: { open: boolean; onClose: () => voi
                   onChange={() => update('agent_type', type_)}
                   className="accent-accent"
                 />
-                <MessageSquare className="h-3 w-3" />
+                {type_ === 'chat' ? <MessageSquare className="h-3 w-3" /> : <Wrench className="h-3 w-3" />}
                 {label}
               </label>
             ))}
           </div>
-          <p className="text-[11px] text-text-muted">目前仅支持对话类型，更多类型即将推出</p>
+          <p className="text-[11px] text-text-muted">对话型：多轮交互，用户驱动对话；工具型：自包含任务，给指令出结果</p>
         </div>
+        <Input
+          label="版本号"
+          value={form.version ?? '0.1.0'}
+          onChange={(e) => update('version', e.target.value)}
+          placeholder="0.1.0"
+        />
         <Input
           label="端点 URL"
           value={form.endpoint_url}
@@ -362,6 +372,7 @@ function EditAgentModal({ agent: ag, onClose }: { agent: AgentResponse; onClose:
   const [form, setForm] = useState<UpdateAgentRequest>({
     display_name: ag.display_name,
     description: ag.description,
+    version: ag.version,
     endpoint_url: ag.endpoint_url,
     context_mode: ag.context_mode,
     max_context_rounds: ag.max_context_rounds,
@@ -416,6 +427,12 @@ function EditAgentModal({ agent: ag, onClose }: { agent: AgentResponse; onClose:
             <span className="text-[11px] text-text-muted">{AGENT_TYPE_LABELS[ag.agent_type] ?? ag.agent_type}（创建后不可更改）</span>
           </div>
         </div>
+        <Input
+          label="版本号"
+          value={form.version ?? ''}
+          onChange={(e) => update('version', e.target.value)}
+          placeholder="1.0.0"
+        />
         <Input
           label="端点 URL"
           value={form.endpoint_url ?? ''}

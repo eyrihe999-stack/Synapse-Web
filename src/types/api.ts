@@ -215,13 +215,14 @@ export interface PermissionsResponse {
 }
 
 // ── Agent ──
-export type AgentType = 'chat';
+export type AgentType = 'chat' | 'tool';
 
 export interface CreateAgentRequest {
   slug: string;
   display_name: string;
   description?: string;
   agent_type?: AgentType;
+  version?: string;
   endpoint_url: string;
   context_mode?: 'stateless' | 'stateful';
   max_context_rounds?: number;
@@ -234,6 +235,7 @@ export interface CreateAgentRequest {
 export interface UpdateAgentRequest {
   display_name?: string;
   description?: string;
+  version?: string;
   endpoint_url?: string;
   context_mode?: 'stateless' | 'stateful';
   max_context_rounds?: number;
@@ -257,6 +259,7 @@ export interface AgentResponse {
   timeout_seconds: number;
   icon_url: string;
   tags: string[];
+  version: string;
   status: string;
   created_at: number;
   updated_at: number;
@@ -295,6 +298,8 @@ export interface PublishResponse {
   agent_icon_url?: string;
   agent_context_mode?: 'stateless' | 'stateful';
   agent_tags?: string[];
+  agent_version?: string;
+  agent_updated_at?: number;
 }
 
 // ── Chat & Sessions ──
