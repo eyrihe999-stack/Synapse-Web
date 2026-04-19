@@ -74,6 +74,36 @@ body {
   box-shadow: 0 1px 4px rgba(55, 53, 48, 0.08), 0 4px 16px rgba(55, 53, 48, 0.05);
 }
 
+/* ── Markdown body (DocumentViewPage 等渲染文档正文用) ──
+   轻量排版,不引入 @tailwindcss/typography 以免 bundle 膨胀;
+   规则够覆盖 GFM 常见元素 + shiki 代码块即可。 */
+.markdown-body h1 { font-size: 22px; font-weight: 600; margin: 1.2em 0 0.6em; line-height: 1.3; border-bottom: 1px solid var(--color-border-default); padding-bottom: 0.3em; }
+.markdown-body h2 { font-size: 18px; font-weight: 600; margin: 1.2em 0 0.5em; line-height: 1.3; border-bottom: 1px solid var(--color-border-default); padding-bottom: 0.3em; }
+.markdown-body h3 { font-size: 16px; font-weight: 600; margin: 1em 0 0.4em; }
+.markdown-body h4 { font-size: 14px; font-weight: 600; margin: 1em 0 0.4em; }
+.markdown-body h5, .markdown-body h6 { font-size: 14px; font-weight: 600; margin: 1em 0 0.4em; color: var(--color-text-secondary); }
+.markdown-body p { margin: 0.7em 0; }
+.markdown-body ul, .markdown-body ol { margin: 0.6em 0; padding-left: 1.6em; }
+.markdown-body ul { list-style: disc; }
+.markdown-body ol { list-style: decimal; }
+.markdown-body li { margin: 0.25em 0; }
+.markdown-body li > ul, .markdown-body li > ol { margin: 0.25em 0; }
+.markdown-body a { color: var(--color-accent); text-decoration: underline; text-underline-offset: 2px; }
+.markdown-body a:hover { opacity: 0.8; }
+.markdown-body blockquote { border-left: 3px solid var(--color-border-bright); padding: 0.1em 1em; color: var(--color-text-secondary); margin: 0.8em 0; background: var(--color-bg-elevated); }
+.markdown-body hr { border: none; border-top: 1px solid var(--color-border-default); margin: 1.5em 0; }
+.markdown-body strong { font-weight: 600; }
+.markdown-body em { font-style: italic; }
+.markdown-body code { font-family: var(--font-mono); font-size: 0.9em; background: var(--color-bg-elevated); border: 1px solid var(--color-border-default); border-radius: 4px; padding: 0.1em 0.4em; }
+/* shiki 生成的 <pre class="shiki">,重置外层、去掉 inline code 样式 */
+.markdown-body pre { background: var(--color-bg-elevated); border: 1px solid var(--color-border-default); border-radius: 6px; padding: 12px 14px; margin: 0.8em 0; overflow-x: auto; font-size: 12.5px; line-height: 1.55; }
+.markdown-body pre code { background: transparent; border: none; padding: 0; font-size: inherit; }
+.markdown-body table { border-collapse: collapse; margin: 0.8em 0; font-size: 13px; display: block; overflow-x: auto; }
+.markdown-body th, .markdown-body td { border: 1px solid var(--color-border-default); padding: 6px 10px; }
+.markdown-body th { background: var(--color-bg-elevated); font-weight: 600; text-align: left; }
+.markdown-body img { max-width: 100%; border-radius: 6px; }
+.markdown-body input[type="checkbox"] { margin-right: 0.4em; }
+
 /* ── Endpoint badge — monospace tech label ── */
 .endpoint-badge {
   font-family: var(--font-mono);

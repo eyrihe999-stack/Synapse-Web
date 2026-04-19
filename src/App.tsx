@@ -8,6 +8,12 @@ import { InvitationsPage } from '@/pages/InvitationsPage';
 import { RolesPage } from '@/pages/RolesPage';
 import { AgentsPage } from '@/pages/AgentsPage';
 import { PublishesPage } from '@/pages/PublishesPage';
+import { DocumentsPage } from '@/pages/DocumentsPage';
+import { DocumentChunksPage } from '@/pages/DocumentChunksPage';
+import { DocumentViewPage } from '@/pages/DocumentViewPage';
+import { IntegrationsListPage } from '@/pages/IntegrationsListPage';
+import { FeishuIntegrationPage } from '@/pages/FeishuIntegrationPage';
+import { GitLabIntegrationPage } from '@/pages/GitLabIntegrationPage';
 import { ChatPage } from '@/pages/ChatPage';
 import { ToastContainer } from '@/components/ui/Toast';
 import { useAuthStore } from '@/store/auth';
@@ -42,6 +48,12 @@ export default function App() {
             <Route path="/org/invitations" element={<InvitationsPage />} />
             <Route path="/org/roles" element={<RolesPage />} />
             <Route path="/org/publishes" element={<PublishesPage />} />
+            <Route path="/org/documents" element={<DocumentsPage />} />
+            <Route path="/org/documents/chunks" element={<DocumentChunksPage />} />
+            <Route path="/org/documents/:id/view" element={<DocumentViewPage />} />
+            <Route path="/org/integrations" element={<IntegrationsListPage />} />
+            <Route path="/org/integrations/feishu" element={<FeishuIntegrationPage />} />
+            <Route path="/org/integrations/gitlab" element={<GitLabIntegrationPage />} />
             <Route path="/org/chat" element={<ChatPage />} />
             <Route path="/org/chat/:ownerUid/:agentSlug" element={<ChatPage />} />
           </Route>

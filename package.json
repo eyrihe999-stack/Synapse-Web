@@ -10,13 +10,17 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@shikijs/rehype": "^4.0.2",
     "axios": "^1.15.0",
     "clsx": "^2.1.1",
     "framer-motion": "^12.38.0",
     "lucide-react": "^1.8.0",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
+    "react-markdown": "^10.1.0",
     "react-router-dom": "^7.14.1",
+    "remark-gfm": "^4.0.1",
+    "shiki": "^4.0.2",
     "zustand": "^5.0.12"
   },
   "devDependencies": {

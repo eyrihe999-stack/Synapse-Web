@@ -1,4 +1,5 @@
 import { useEffect, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 
 interface ModalProps {
@@ -18,7 +19,10 @@ export function Modal({ open, onClose, title, children }: ModalProps) {
 
   if (!open) return null;
 
-  return (
+  // 用 Portal 挂到 body —— 避免祖先元素 transform/filter/perspective 等属性
+  // 把 fixed 定位变成相对父元素,导致 Modal 被 clip。GlassCard 用了 framer-motion 的
+  // motion.div,入场动画会应用 transform,正是这个坑。
+  return createPortal(
     <div className="fixed inset-0 z-[90] flex items-center justify-center">
       <div className="absolute inset-0 bg-black/20 backdrop-blur-[2px]" onClick={onClose} />
       <div
@@ -35,6 +39,7 @@ export function Modal({ open, onClose, title, children }: ModalProps) {
           {children}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

@@ -9,6 +9,8 @@ import {
   Bot,
   Send,
   MessageSquare,
+  FileText,
+  Link2,
   LogOut,
   Activity,
 } from 'lucide-react';
@@ -26,6 +28,8 @@ const navItems = [
   { label: '邀请', icon: Mail, to: '/org/invitations' },
   { label: '角色与权限', icon: Shield, to: '/org/roles' },
   { label: 'Agent 发布', icon: Send, to: '/org/publishes' },
+  { label: '文档', icon: FileText, to: '/org/documents' },
+  { label: '集成', icon: Link2, to: '/org/integrations' },
   { label: '对话', icon: MessageSquare, to: '/org/chat' },
 ];
 

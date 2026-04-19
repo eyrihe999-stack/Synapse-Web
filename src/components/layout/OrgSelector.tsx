@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Building2, ChevronDown, RefreshCw } from 'lucide-react';
 import { clsx } from 'clsx';
 import { useOrgStore } from '@/store/org';
@@ -8,17 +8,40 @@ export function OrgSelector() {
   const { orgs, currentOrg, fetchOrgs, selectOrg, loading } = useOrgStore();
   const isLoggedIn = useAuthStore((s) => s.isLoggedIn)();
   const [open, setOpen] = useState(false);
+  // 容器 ref 用于判断点击事件是否发生在下拉组件外部,进而决定是否关闭菜单。
+  const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (isLoggedIn) fetchOrgs();
   }, [isLoggedIn, fetchOrgs]);
+
+  // 点击外部区域 / 按 Escape 关闭菜单。
+  // 只在 open=true 时绑定监听,避免关闭状态下也占用一份全局事件监听器。
+  // 用 mousedown 而非 click —— 按下立即关闭,避免"按下 → 菜单关闭后菜单背后的元素被 click 误触发"的尴尬。
+  useEffect(() => {
+    if (!open) return;
+    const handleMouseDown = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    };
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setOpen(false);
+    };
+    document.addEventListener('mousedown', handleMouseDown);
+    document.addEventListener('keydown', handleKey);
+    return () => {
+      document.removeEventListener('mousedown', handleMouseDown);
+      document.removeEventListener('keydown', handleKey);
+    };
+  }, [open]);
 
   return (
     <div className="sticky top-0 z-40 border-b border-border-default bg-white/80 backdrop-blur-sm px-8 py-2">
       <div className="flex items-center justify-between max-w-[1200px]">
         <div className="flex items-center gap-2">
           <span className="text-[11px] text-text-muted">组织上下文</span>
-          <div className="relative">
+          <div className="relative" ref={containerRef}>
             <button
               onClick={() => setOpen(!open)}
               className={clsx(
