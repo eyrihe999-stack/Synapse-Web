@@ -66,7 +66,7 @@ export function OrgSelector() {
                       key={o.org.id}
                       onClick={() => { selectOrg(o.org.slug); setOpen(false); }}
                       className={clsx(
-                        'w-full flex items-center justify-between px-3 py-2 text-left text-[13px] transition-colors cursor-pointer',
+                        'w-full flex items-center px-3 py-2 text-left text-[13px] transition-colors cursor-pointer',
                         currentOrg?.org.id === o.org.id
                           ? 'bg-accent/[0.06] text-accent'
                           : 'text-text-secondary hover:bg-bg-hover',
@@ -76,7 +76,6 @@ export function OrgSelector() {
                         <p className="font-medium">{o.org.display_name}</p>
                         <p className="text-[10px] text-text-muted font-mono">{o.org.slug}</p>
                       </div>
-                      <span className="text-[10px] text-text-muted font-mono">{o.my_role.name}</span>
                     </button>
                   ))
                 )}

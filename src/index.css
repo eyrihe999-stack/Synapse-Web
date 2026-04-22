@@ -104,6 +104,43 @@ body {
 .markdown-body img { max-width: 100%; border-radius: 6px; }
 .markdown-body input[type="checkbox"] { margin-right: 0.4em; }
 
+/* ── Workflow step 入场动画 ──
+   新 step 插入时播一次;key 稳定不会重播,所以只在"真的新增"时有动画效果。 */
+@keyframes wf-step-in {
+  from { opacity: 0; transform: translateX(-6px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+.wf-step-enter { animation: wf-step-in 0.22s ease-out; }
+
+/* ── Workflow:"思考中"条目软呼吸 ── */
+@keyframes wf-thinking-pulse {
+  0%, 100% { opacity: 0.55; }
+  50%      { opacity: 1; }
+}
+.wf-thinking { animation: wf-thinking-pulse 1.4s ease-in-out infinite; }
+
+/* ── Indeterminate progress:barber-pole 条纹横向流动 ──
+   在 total=0/未知时给上传任务条显示"在动但无百分比"的视觉反馈,比干等 0% 友好。
+   只靠 background-position 动画,GPU 友好;不开 translate 层避免 subpixel 抖。 */
+@keyframes indeterminate-stripes {
+  0%   { background-position: 0 0; }
+  100% { background-position: 28px 0; }
+}
+.indeterminate-bar {
+  background-image: linear-gradient(
+    135deg,
+    rgba(35, 131, 226, 0.28) 25%,
+    rgba(35, 131, 226, 0.08) 25%,
+    rgba(35, 131, 226, 0.08) 50%,
+    rgba(35, 131, 226, 0.28) 50%,
+    rgba(35, 131, 226, 0.28) 75%,
+    rgba(35, 131, 226, 0.08) 75%,
+    rgba(35, 131, 226, 0.08)
+  );
+  background-size: 28px 28px;
+  animation: indeterminate-stripes 0.9s linear infinite;
+}
+
 /* ── Endpoint badge — monospace tech label ── */
 .endpoint-badge {
   font-family: var(--font-mono);

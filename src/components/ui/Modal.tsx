@@ -7,9 +7,17 @@ interface ModalProps {
   onClose: () => void;
   title: string;
   children: ReactNode;
+  /** 容器最大宽度。默认 md (448px);lg/xl 适合展示 markdown 原文这类长内容。 */
+  size?: 'md' | 'lg' | 'xl';
 }
 
-export function Modal({ open, onClose, title, children }: ModalProps) {
+const sizeClass = {
+  md: 'max-w-md',
+  lg: 'max-w-2xl',
+  xl: 'max-w-4xl',
+} as const;
+
+export function Modal({ open, onClose, title, children, size = 'md' }: ModalProps) {
   useEffect(() => {
     if (open) {
       document.body.style.overflow = 'hidden';
@@ -27,7 +35,7 @@ export function Modal({ open, onClose, title, children }: ModalProps) {
       <div className="absolute inset-0 bg-black/20 backdrop-blur-[2px]" onClick={onClose} />
       <div
         data-augmented-ui="tl-clip br-clip border"
-        className="aug-card aug-card-cyan relative w-full max-w-md mx-4 p-0 max-h-[85vh] overflow-auto"
+        className={`aug-card aug-card-cyan relative w-full ${sizeClass[size]} mx-4 p-0 max-h-[85vh] overflow-auto`}
       >
         <div className="flex items-center justify-between px-5 py-3.5 border-b border-border-default">
           <h3 className="text-[14px] font-semibold text-text-primary">{title}</h3>

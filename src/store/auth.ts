@@ -33,7 +33,11 @@ interface AuthState {
   refreshToken: string | null;
 
   setAuth: (token: string, refresh: string, user: UserProfile) => void;
-  logout: () => void;
+  // logout 用户主动退出:先调后端吊销 session,再清本地。async。
+  logout: () => Promise<void>;
+  // logoutLocalOnly token 已失效场景(axios 401 自动登出)的纯本地清理。
+  // 不调后端:token 已无效,调也调不动,还会触发拦截器死循环。
+  logoutLocalOnly: () => void;
   refresh: () => Promise<void>;
   fetchProfile: () => Promise<void>;
   isLoggedIn: () => boolean;
@@ -51,7 +55,23 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
     saveToSession({ accessToken, refreshToken, user });
   },
 
-  logout: () => {
+  logout: async () => {
+    // 先调后端吊销 session(带着仍有效的 token),再清本地。
+    // 顺序关键:反过来的话 token 已清,axios 拦截器发不出有效请求。
+    const deviceId = getDeviceId();
+    const hasToken = !!get().accessToken;
+    if (deviceId && hasToken) {
+      try {
+        await userApi.kickSession(deviceId);
+      } catch {
+        // 后端抖动/超时/401 都不阻塞本地清理 —— 登出按钮必须响应。
+      }
+    }
+    set({ user: null, accessToken: null, refreshToken: null });
+    clearSession();
+  },
+
+  logoutLocalOnly: () => {
     set({ user: null, accessToken: null, refreshToken: null });
     clearSession();
   },

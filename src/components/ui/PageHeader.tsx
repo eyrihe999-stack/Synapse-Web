@@ -4,7 +4,8 @@ import type { ReactNode } from 'react';
 
 interface PageHeaderProps {
   title: string;
-  subtitle?: string;
+  // 文案副标题(常态)或自定义节点(展示 badge / 多元素时)。
+  subtitle?: ReactNode;
   loading?: boolean;
   onRefresh?: () => void;
   action?: ReactNode;

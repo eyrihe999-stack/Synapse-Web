@@ -4,41 +4,45 @@ import {
   User,
   Building2,
   Users,
-  Mail,
-  Shield,
-  Bot,
-  Send,
-  MessageSquare,
-  FileText,
-  Link2,
   LogOut,
   Activity,
+  Lock,
+  Monitor,
+  BookOpen,
+  Shield,
+  Inbox,
+  UsersRound,
+  KeySquare,
+  History,
 } from 'lucide-react';
 import { useAuthStore } from '@/store/auth';
 import { useOrgStore } from '@/store/org';
+import { UserAvatar } from '@/components/ui/UserIdentity';
 
 const personalItems = [
   { label: '个人资料', icon: User, to: '/user' },
-  { label: '我的 Agent', icon: Bot, to: '/agents' },
+  { label: '我的邀请', icon: Inbox, to: '/user/invitations' },
+  { label: '安全设置', icon: Lock, to: '/user/security' },
+  { label: '已登录设备', icon: Monitor, to: '/user/sessions' },
 ];
 
 const navItems = [
   { label: '组织管理', icon: Building2, to: '/org' },
   { label: '成员', icon: Users, to: '/org/members' },
-  { label: '邀请', icon: Mail, to: '/org/invitations' },
-  { label: '角色与权限', icon: Shield, to: '/org/roles' },
-  { label: 'Agent 发布', icon: Send, to: '/org/publishes' },
-  { label: '文档', icon: FileText, to: '/org/documents' },
-  { label: '集成', icon: Link2, to: '/org/integrations' },
-  { label: '对话', icon: MessageSquare, to: '/org/chat' },
+  { label: '角色', icon: Shield, to: '/org/roles' },
+  { label: '权限组', icon: UsersRound, to: '/org/groups' },
+  { label: '知识源', icon: KeySquare, to: '/org/sources' },
+  { label: '知识库', icon: BookOpen, to: '/org/knowledge' },
+  { label: '审计日志', icon: History, to: '/org/audit-log' },
 ];
 
 export function Sidebar() {
   const { user, logout, isLoggedIn } = useAuthStore();
+  const { orgs, currentOrg } = useOrgStore();
   const navigate = useNavigate();
 
-  const handleLogout = () => {
-    logout();
+  const handleLogout = async () => {
+    await logout();
     useOrgStore.getState().clearOrg();
     navigate('/auth', { replace: true });
   };
@@ -77,6 +81,8 @@ export function Sidebar() {
           <NavLink
             key={to}
             to={to}
+            // /user 是 /user/security、/user/sessions 的前缀 —— 必须精确匹配才不会把三个导航项一起点亮
+            end={to === '/user'}
             className={({ isActive }) =>
               clsx(
                 'flex items-center gap-2.5 px-2.5 py-[6px] rounded-md text-[14px] transition-colors duration-100',
@@ -128,21 +134,44 @@ export function Sidebar() {
       {/* User */}
       <div className="px-3 py-2.5 border-t border-[#e8e7e3]">
         {isLoggedIn() && user ? (
-          <div className="flex items-center gap-2.5 px-1">
-            <div className="h-6 w-6 rounded-md bg-[#f1f0ea] flex items-center justify-center shrink-0">
-              <span className="text-[11px] font-medium text-text-secondary">
-                {(user.display_name || user.email)[0].toUpperCase()}
-              </span>
-            </div>
+          <div className="flex items-start gap-2.5 px-1">
+            <UserAvatar
+              avatarUrl={user.avatar_url}
+              fallback={user.display_name || user.email}
+              size="sm"
+              tone="muted"
+            />
             <div className="flex-1 min-w-0">
-              <p className="text-[13px] font-medium text-text-primary truncate leading-tight">
+              <p
+                className="text-[13px] font-medium text-text-primary truncate leading-tight"
+                title={user.display_name || 'User'}
+              >
                 {user.display_name || 'User'}
               </p>
-              <p className="text-[10px] text-text-muted truncate leading-tight">{user.email}</p>
+              <p className="text-[10px] text-text-muted truncate leading-tight" title={user.email}>
+                {user.email}
+              </p>
+              {currentOrg ? (
+                <p
+                  className="mt-1 text-[10px] text-text-muted truncate leading-tight flex items-center gap-1"
+                  title={`${currentOrg.org.display_name}${orgs.length > 1 ? ` · 共 ${orgs.length} 个组织` : ''}`}
+                >
+                  <Building2 className="h-2.5 w-2.5 shrink-0" strokeWidth={1.8} />
+                  <span className="truncate text-text-secondary">{currentOrg.org.display_name}</span>
+                  {orgs.length > 1 && (
+                    <span className="shrink-0 opacity-70">· {orgs.length} 个</span>
+                  )}
+                </p>
+              ) : orgs.length > 0 ? (
+                <p className="mt-1 text-[10px] text-text-muted truncate leading-tight flex items-center gap-1">
+                  <Building2 className="h-2.5 w-2.5 shrink-0" strokeWidth={1.8} />
+                  <span className="truncate">未选择组织 · 共 {orgs.length} 个</span>
+                </p>
+              ) : null}
             </div>
             <button
               onClick={handleLogout}
-              className="text-text-muted hover:text-accent-red transition-colors cursor-pointer p-0.5"
+              className="text-text-muted hover:text-accent-red transition-colors cursor-pointer p-0.5 shrink-0 mt-0.5"
               title="退出登录"
             >
               <LogOut className="h-3.5 w-3.5" />

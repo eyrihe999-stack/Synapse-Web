@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
@@ -13,6 +14,7 @@ import { formatTs } from '@/lib/format';
 import {
   Pencil, Save, X, User as UserIcon, Mail, Clock,
   Hash, Building2, Shield, Copy, Check, Image,
+  AlertTriangle, Send, Lock, Monitor,
 } from 'lucide-react';
 
 export function UserPage() {
@@ -24,6 +26,7 @@ export function UserPage() {
   const [saving, setSaving] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [resendingVerify, setResendingVerify] = useState(false);
 
   useEffect(() => {
     fetchOrgs();
@@ -45,11 +48,11 @@ export function UserPage() {
 
   const save = async () => {
     setSaving(true);
-    const result = await apiCall(
+    const res = await apiCall(
       () => userApi.updateMe({ display_name: displayName || undefined, avatar_url: avatarUrl || undefined }),
       { success: '个人信息已更新' },
     );
-    if (result) {
+    if (res.ok) {
       await fetchProfile();
       setEditing(false);
     }
@@ -64,14 +67,62 @@ export function UserPage() {
     setTimeout(() => setCopied(false), 2000);
   };
 
+  const resendVerify = async () => {
+    setResendingVerify(true);
+    await apiCall(() => userApi.resendVerification(), { success: '激活邮件已发送,请查收' });
+    setResendingVerify(false);
+  };
+
   if (!user) return null;
 
   const initial = (user.display_name || user.email)[0].toUpperCase();
   const hasAvatar = !!user.avatar_url;
+  // 邮箱未验证:status=0 或 email_verified_at 为空。pseudo_verify 状态下后端会拒绝
+  // 创建 org / 发布 agent / 调 chat,这里给顶部告警 + 重发按钮,引导用户完成验证。
+  const isPendingVerify =
+    (user.status != null && user.status === 0) ||
+    (user.email_verified_at === null || user.email_verified_at === undefined || user.email_verified_at === '');
+  // status=2 封禁,给只读告警;status=3 理论上看不到(deleted 会被 401 挡掉),兜底展示
+  const isBanned = user.status === 2;
+  const isDeleted = user.status === 3;
 
   return (
     <div className="space-y-6 max-w-2xl">
       <PageHeader title="个人资料" subtitle="管理你的个人信息" loading={refreshing} onRefresh={refresh} />
+
+      {/* 邮箱未验证告警。仅对还能登录进来的 pending_verify 用户展示 */}
+      {isPendingVerify && !isBanned && !isDeleted && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50/80 px-4 py-3 flex items-start gap-3">
+          <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
+          <div className="flex-1 min-w-0">
+            <p className="text-[13px] font-medium text-amber-900 mb-0.5">邮箱未验证</p>
+            <p className="text-[12px] text-amber-800 leading-relaxed">
+              创建组织、发布 Agent、发起对话等操作需要先验证邮箱 <span className="font-mono">{user.email}</span>。
+            </p>
+          </div>
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={resendVerify}
+            loading={resendingVerify}
+            icon={<Send className="h-3 w-3" />}
+          >
+            重发激活邮件
+          </Button>
+        </div>
+      )}
+
+      {isBanned && (
+        <div className="rounded-lg border border-accent-red/20 bg-[#faecec] px-4 py-3 flex items-start gap-3">
+          <AlertTriangle className="h-4 w-4 text-accent-red shrink-0 mt-0.5" />
+          <div className="flex-1 min-w-0">
+            <p className="text-[13px] font-medium text-accent-red mb-0.5">账号已被封禁</p>
+            <p className="text-[12px] text-accent-red leading-relaxed">
+              此账号当前处于封禁状态,大部分功能不可用。如有疑问请联系管理员。
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* ── Profile Card ── */}
       <GlassCard>
@@ -155,7 +206,40 @@ export function UserPage() {
               {copied ? <Check className="h-3.5 w-3.5 text-green-500" /> : <Copy className="h-3.5 w-3.5" />}
             </button>
           </div>
-          <InfoRow icon={<Shield className="h-3.5 w-3.5" />} label="账户状态" value="正常" />
+          <InfoRow
+            icon={<Shield className="h-3.5 w-3.5" />}
+            label="账户状态"
+            value={statusLabel(user.status, isPendingVerify)}
+          />
+          <InfoRow
+            icon={<Mail className="h-3.5 w-3.5" />}
+            label="邮箱验证"
+            value={user.email_verified_at ? `已验证 · ${formatTs(user.email_verified_at)}` : '未验证'}
+          />
+          {user.last_login_at && (
+            <InfoRow
+              icon={<Clock className="h-3.5 w-3.5" />}
+              label="最近登录"
+              value={formatTs(user.last_login_at, { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}
+            />
+          )}
+        </div>
+      </GlassCard>
+
+      {/* ── Security Shortcuts ── */}
+      <GlassCard>
+        <h4 className="text-[14px] font-semibold text-text-primary mb-4">账号安全</h4>
+        <div className="space-y-0">
+          <Link to="/user/security" className="flex items-center gap-3 py-2.5 border-b border-border-default hover:bg-bg-hover/40 -mx-5 px-5 transition-colors">
+            <Lock className="h-3.5 w-3.5 text-text-muted" />
+            <span className="flex-1 text-[13px] text-text-primary">安全设置</span>
+            <span className="text-[12px] text-text-muted">修改密码 / 修改邮箱 / 注销账号</span>
+          </Link>
+          <Link to="/user/sessions" className="flex items-center gap-3 py-2.5 hover:bg-bg-hover/40 -mx-5 px-5 transition-colors">
+            <Monitor className="h-3.5 w-3.5 text-text-muted" />
+            <span className="flex-1 text-[13px] text-text-primary">已登录设备</span>
+            <span className="text-[12px] text-text-muted">查看会话 / 踢下线 / 登出全部</span>
+          </Link>
         </div>
       </GlassCard>
 
@@ -178,12 +262,9 @@ export function UserPage() {
               >
                 <span className="text-text-muted"><Building2 className="h-3.5 w-3.5" /></span>
                 <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <span className="text-[13px] text-text-primary font-medium truncate">
-                      {item.org.display_name}
-                    </span>
-                    <StatusBadge status={item.my_role.name} />
-                  </div>
+                  <span className="text-[13px] text-text-primary font-medium truncate block">
+                    {item.org.display_name}
+                  </span>
                   <span className="text-[11px] text-text-muted font-mono">{item.org.slug}</span>
                 </div>
                 <span className="text-[11px] text-text-muted shrink-0">
@@ -206,4 +287,14 @@ function InfoRow({ icon, label, value, mono }: { icon: React.ReactNode; label: s
       <span className={`text-[13px] text-text-primary ${mono ? 'font-mono' : ''}`}>{value}</span>
     </div>
   );
+}
+
+// status 枚举对应后端 model.Status*:
+//   0 pending_verify / 1 active / 2 banned / 3 deleted
+// 前端能看到的合法态只有 active 和 pending_verify(banned 登不进、deleted 已踢);为兜底仍覆盖全部。
+function statusLabel(status: number | undefined, isPending: boolean): string {
+  if (status === 2) return '已封禁';
+  if (status === 3) return '已注销';
+  if (status === 0 || isPending) return '待验证邮箱';
+  return '正常';
 }

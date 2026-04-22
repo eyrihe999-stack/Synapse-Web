@@ -28,6 +28,7 @@ export interface PaginatedResponse<T = unknown> extends BaseResponse<T> {
 export interface RegisterRequest {
   email: string;
   password: string;
+  code: string;
   display_name?: string;
   device_id?: string;
   device_name?: string;
@@ -36,8 +37,19 @@ export interface RegisterRequest {
 export interface LoginRequest {
   email: string;
   password: string;
+  code: string;
   device_id?: string;
   device_name?: string;
+}
+
+export interface SendEmailCodeRequest {
+  email: string;
+}
+
+export interface SendEmailCodeResponse {
+  email: string;
+  expires_in: number;
+  sent_at: string;
 }
 
 export interface RefreshRequest {
@@ -46,12 +58,74 @@ export interface RefreshRequest {
   device_name?: string;
 }
 
+// ── Password Reset (M1.3) ──
+// request:传邮箱,后端无论是否存在都返成功(防账户枚举)
+// confirm:传 token + 新密码,成功后后端会清空所有 session,用户需重新登录
+export interface RequestPasswordResetRequest {
+  email: string;
+}
+
+export interface ConfirmPasswordResetRequest {
+  token: string;
+  new_password: string;
+}
+
+// ── OAuth Login (M1.6) ──
+// 后端 /auth/oauth/google/callback 完成 OIDC 后把 AuthResponse 暂存 Redis,
+// 302 到 /auth/oauth/callback?exchange={code};前端用 code 调 /auth/oauth/exchange 兑换真 tokens。
+export interface OAuthExchangeRequest {
+  code: string;
+}
+
 export interface UserProfile {
   id: string;
   email: string;
   display_name: string;
   avatar_url: string;
+  // M1.7 账号状态:0=pending_verify / 1=active / 2=banned / 3=deleted
+  status?: number;
+  // M1.1 邮箱验证完成时间;null 表示 pending_verify,前端据此提示"请先验证邮箱"
+  email_verified_at?: string | null;
+  last_login_at?: string | null;
   created_at: string;
+}
+
+// ── Account Security (M1.7 改密 / 改邮箱 / 注销) ──
+// ChangePassword:OAuth-only 账号 (password_hash 空) 必须带 Code(发到当前邮箱的 6 位);
+//                本地账号带 OldPassword。成功后 LogoutAll,需重登。
+export interface ChangePasswordRequest {
+  old_password?: string;
+  new_password: string;
+  code?: string;
+}
+
+// ChangeEmail:必须先通过 /auth/email/send-code 向 new_email 发码,本接口消费该码;
+//             OAuth-only 账号后端直接拒(需先走 ChangePassword 绑本地密码)。
+export interface ChangeEmailRequest {
+  new_email: string;
+  password?: string;
+  code: string;
+}
+
+// DeleteAccount:本地账号必须带 password 二次确认,OAuth-only 省略。
+// Reason 上限 64 字节,审计用。
+export interface DeleteAccountRequest {
+  password?: string;
+  reason?: string;
+}
+
+// ── Email Verification (M1.1) ──
+// VerifyEmail:从邮件链接里拿 token 激活;一次性消费。
+export interface VerifyEmailRequest {
+  token: string;
+}
+
+// ── Sessions ──
+export interface SessionEntry {
+  device_id: string;
+  device_name: string;
+  login_ip: string;
+  login_at: number;
 }
 
 export interface AuthResponse {
@@ -78,13 +152,18 @@ export interface UpdateOrgRequest {
   description?: string;
 }
 
-export interface UpdateOrgSettingsRequest {
-  require_agent_review?: boolean;
-  record_full_payload?: boolean;
+// M3.6 创建前 slug 预检。reason 仅在 available=false 时有值:
+//   - "invalid_format":不符合 ^[a-z][a-z0-9-]{2,31}$
+//   - "taken":slug 已被占用(含已解散 org)
+export interface CheckSlugResponse {
+  available: boolean;
+  reason?: 'invalid_format' | 'taken';
 }
 
-export interface TransferOwnershipRequest {
-  target_user_id: string;
+// M3.7 注销 guard 响应体里的 org 摘要;owner 仍有 active org 时后端带回来引导 UI。
+export interface OwnedOrgSummary {
+  slug: string;
+  display_name: string;
 }
 
 export interface OrgResponse {
@@ -94,33 +173,130 @@ export interface OrgResponse {
   description?: string;
   owner_user_id: string;
   status: string;
-  require_agent_review: boolean;
-  record_full_payload: boolean;
   created_at: number;
   updated_at: number;
 }
 
+// GET /v2/orgs/mine 每条记录:简化架构下只有 org + 加入时间,无 role。
+export interface OrgMembership {
+  org: OrgResponse;
+  joined_at: number;
+}
+
+// ── Role (per-org) ──
+// 系统角色 (is_system=true) 三条由后端自动 seed:owner / admin / member,slug 锁死、不可改不可删。
+// 自定义角色数量上限 20,slug 必须符合 ^[a-z][a-z0-9-]{1,31}$ 且不能冲突系统保留 slug。
+//
+// M5:角色带 permissions(操作权限位列表),控制 RBAC 受限端点。前端必须把当前 user 自己的
+// permissions 缓存起来用于"权限上限"提示(创建/改 role 时不能配出超过自己的 perm)。
 export interface RoleSummary {
-  id: string;
-  name: string;
+  slug: string;
   display_name: string;
-  is_preset: boolean;
+  is_system: boolean;
+}
+
+export interface RoleResponse {
+  slug: string;
+  display_name: string;
+  is_system: boolean;
+  permissions: string[];
+  created_at: number;
+  updated_at: number;
+}
+
+export interface CreateRoleRequest {
+  slug: string;
+  display_name: string;
+  permissions?: string[];
+}
+
+// UpdateRoleRequest 修改自定义角色:permissions 用 null/undefined 区分"不动"和"清空":
+//   - 不传(undefined)→ 不动
+//   - 传 [](空数组)→ 替换为空集
+// 注意系统角色改 perms 走独立端点 PATCH /roles/:slug/permissions。
+export interface UpdateRoleRequest {
+  display_name?: string;
+  permissions?: string[];
+}
+
+// UpdateRolePermissionsRequest:任意角色(含系统)的 permissions 编辑请求体,
+// 由 PATCH /roles/:slug/permissions 端点接收。需要 role.manage_system 权限(默认 owner)。
+export interface UpdateRolePermissionsRequest {
   permissions: string[];
 }
 
-export interface OrgWithMyRole {
-  org: OrgResponse;
-  my_role: RoleSummary;
-  joined_at: number;
+export interface AssignRoleRequest {
+  role_slug: string;
 }
 
+// ── Permission constants(M4) ──
+// 后端权限位,前端用来在 perm 编辑器里渲染、做上限校验。
+// 加新 perm 时这里同步加。
+export const ALL_PERMISSIONS = [
+  // org
+  'org.transfer',
+  'org.dissolve',
+  'org.update',
+  // member
+  'member.invite',
+  'member.remove',
+  'member.role_assign',
+  // role
+  'role.manage',
+  'role.manage_system',
+  // source
+  'source.create',
+  'source.delete_any',
+  // group
+  'group.create',
+  'group.delete_any',
+  // audit
+  'audit.read_all',
+] as const;
+
+export type Permission = (typeof ALL_PERMISSIONS)[number];
+
+// 权限分组(用于 UI 渲染分类的 checkbox 矩阵)
+export const PERMISSION_GROUPS: Array<{ label: string; perms: Permission[] }> = [
+  { label: '组织', perms: ['org.transfer', 'org.dissolve', 'org.update'] },
+  { label: '成员', perms: ['member.invite', 'member.remove', 'member.role_assign'] },
+  { label: '角色', perms: ['role.manage', 'role.manage_system'] },
+  { label: '知识源', perms: ['source.create', 'source.delete_any'] },
+  { label: '权限组', perms: ['group.create', 'group.delete_any'] },
+  { label: '审计', perms: ['audit.read_all'] },
+];
+
+// 中文展示名(单条 perm 的文案)
+export const PERMISSION_LABELS: Record<Permission, string> = {
+  'org.transfer': '转让所有权',
+  'org.dissolve': '解散组织',
+  'org.update': '修改组织信息',
+  'member.invite': '邀请 / 列邀请',
+  'member.remove': '踢出成员',
+  'member.role_assign': '分配成员角色',
+  'role.manage': '管理自定义角色',
+  'role.manage_system': '编辑系统角色权限',
+  'source.create': '创建知识源',
+  'source.delete_any': '删除他人知识源',
+  'group.create': '创建权限组',
+  'group.delete_any': '删除他人权限组',
+  'audit.read_all': '查看全 org 审计',
+};
+
 // ── Members ──
+// email / status / email_verified_at / last_login_at 由后端 JOIN users 表回填,同 org 成员可见。
+// email_verified_at=null 表示未验证邮箱;last_login_at=null 表示从未登录;status 同 UserProfile.status
+// 枚举(0=pending_verify / 1=active / 2=banned / 3=deleted)。
 export interface MemberResponse {
   user_id: string;
+  email?: string;
   display_name?: string;
   avatar_url?: string;
-  role: RoleSummary;
+  status?: number;
+  email_verified_at?: number | null;
+  last_login_at?: number | null;
   joined_at: number;
+  role: RoleSummary;
 }
 
 export interface ListMembersResponse {
@@ -130,53 +306,25 @@ export interface ListMembersResponse {
   size: number;
 }
 
-export interface AssignRoleRequest {
-  role_id: string;
-}
-
 // ── Invitations ──
-export interface SearchInviteesRequest {
-  query_type: 'user_id' | 'nickname' | 'email';
-  user_id?: string;
-  nickname?: string;
-  email?: string;
-}
-
-export interface InviteeCandidate {
-  user_id: string;
-  display_name?: string;
-  avatar_url?: string;
-  masked_email?: string;
-}
-
-export interface SearchInviteesResponse {
-  candidates: InviteeCandidate[];
-}
-
-export interface CreateInvitationRequest {
-  invitee_user_id: string;
-  role_id: string;
-}
+// 邀请状态机:pending → {accepted | revoked | rejected | expired}。
+//   - revoked  : inviter 主动撤销
+//   - rejected : invitee 主动拒绝(收件箱拒绝按钮)
+//   - expired  : 懒过期
+// raw token 只出现在邮件链接里,后端 DB 只存 sha256 hash;列表/详情 API 不返 token。
+export type InvitationStatus = 'pending' | 'accepted' | 'revoked' | 'rejected' | 'expired';
 
 export interface InvitationResponse {
   id: string;
-  org_id: string;
-  org_slug?: string;
-  org_display_name?: string;
-  org_description?: string;
-  org_owner_name?: string;
-  org_member_count?: number;
+  email: string;
+  role: RoleSummary;
+  status: InvitationStatus;
   inviter_user_id: string;
-  invitee_user_id: string;
-  inviter_name?: string;
-  inviter_email?: string;
-  invitee_name?: string;
-  invitee_email?: string;
-  role?: RoleSummary;
-  type: string;
-  status: string;
   expires_at: number;
+  accepted_at?: number;
+  accepted_user_id?: string;
   created_at: number;
+  updated_at: number;
 }
 
 export interface ListInvitationsResponse {
@@ -186,571 +334,314 @@ export interface ListInvitationsResponse {
   size: number;
 }
 
-// ── Roles ──
-export interface RoleResponse {
-  id: string;
+export interface CreateInvitationRequest {
+  email: string;
+  role_slug: string;
+}
+
+export interface AcceptInvitationRequest {
+  token: string;
+}
+
+// Accept 成功后前端据此跳到 org 详情页。
+export interface AcceptInvitationResult {
   org_id: string;
-  name: string;
+  org_slug: string;
   display_name: string;
-  is_preset: boolean;
-  permissions: string[];
-  created_at: number;
-  updated_at: number;
 }
 
-export interface CreateRoleRequest {
-  name: string;
+// Preview 未登录也可调,返邀请摘要(不含 token)。
+export interface InvitationPreviewResponse {
+  org_slug: string;
+  org_display_name: string;
+  inviter_name: string;
+  email: string;
+  role: RoleSummary;
+  status: InvitationStatus;
+  expires_at: number;
+}
+
+// ── Invitation search candidates ──
+// 搜索类型:邀请对话框让用户明示选择,后端按 type 分三路 SQL:
+//   email   → LOWER(email) 精确,limit 1
+//   user_id → 主键精确,limit 1
+//   name    → display_name LIKE '%q%',limit 10,query >= 2 字符
+export type InviteSearchType = 'email' | 'user_id' | 'name';
+
+export interface InviteCandidate {
+  user_id: string;
+  email: string;
   display_name: string;
-  permissions: string[];
+  avatar_url?: string;
+  // is_member = 已是该 org 成员;has_pending_invite = 已有一条 pending 邀请挂着。
+  // 任一为 true 的候选前端应灰掉并禁用点击。
+  is_member: boolean;
+  has_pending_invite: boolean;
 }
 
-export interface UpdateRoleRequest {
-  display_name?: string;
-  permissions?: string[];
+export interface SearchCandidatesResponse {
+  items: InviteCandidate[];
 }
 
-export interface PermissionsResponse {
-  all: string[];
-  owner_only: string[];
-}
-
-// ── Agent ──
-export type AgentType = 'chat' | 'tool';
-
-export interface CreateAgentRequest {
-  slug: string;
-  display_name: string;
-  description?: string;
-  agent_type?: AgentType;
-  version?: string;
-  endpoint_url: string;
-  context_mode?: 'stateless' | 'stateful';
-  max_context_rounds?: number;
-  auth_token?: string;
-  timeout_seconds?: number;
-  icon_url?: string;
-  tags?: string[];
-}
-
-export interface UpdateAgentRequest {
-  display_name?: string;
-  description?: string;
-  version?: string;
-  endpoint_url?: string;
-  context_mode?: 'stateless' | 'stateful';
-  max_context_rounds?: number;
-  auth_token?: string;
-  timeout_seconds?: number;
-  icon_url?: string;
-  tags?: string[];
-}
-
-export interface AgentResponse {
+// ── My Invitations(收件箱) ──
+// 登录用户按 email 匹配收到的邀请。和 InvitationPreviewResponse 相比多了 id,
+// 少了 email(email 永远是登录用户自己);status 带上让前端区分 pending / 已处理。
+export interface MyInvitationResponse {
   id: string;
-  owner_user_id: string;
-  slug: string;
-  display_name: string;
-  description: string;
-  agent_type: AgentType;
-  endpoint_url: string;
-  context_mode: 'stateless' | 'stateful';
-  max_context_rounds: number;
-  has_auth_token: boolean;
-  timeout_seconds: number;
-  icon_url: string;
-  tags: string[];
-  version: string;
-  status: string;
+  org_slug: string;
+  org_display_name: string;
+  inviter_name: string;
+  role: RoleSummary;
+  status: InvitationStatus;
+  expires_at: number;
   created_at: number;
-  updated_at: number;
 }
 
-// ── Agent Publishing ──
-export interface PublishAgentRequest {
-  agent_id: string;
-  note?: string;
+export interface ListMyInvitationsResponse {
+  items: MyInvitationResponse[];
 }
 
-export interface ReviewPublishRequest {
-  note?: string;
-}
-
-export interface PublishResponse {
+// ── Sent Invitations(发件箱) ──
+// 登录用户作为 inviter 发出的邀请,跨 org 聚合。和 MyInvitationResponse 相比
+// 显式带 email(发给谁),不带 inviter_name(永远是登录用户自己)。
+export interface SentInvitationResponse {
   id: string;
-  agent_id: string;
-  org_id: string;
-  submitted_by_user_id: string;
-  status: string;
-  reviewed_by_user_id?: string;
-  reviewed_at?: number;
-  review_note?: string;
-  revoked_at?: number;
-  revoked_reason?: string;
+  org_slug: string;
+  org_display_name: string;
+  email: string;
+  role: RoleSummary;
+  status: InvitationStatus;
+  expires_at: number;
   created_at: number;
-  updated_at: number;
-  submitted_by_display_name?: string;
-  reviewed_by_display_name?: string;
-  agent_slug?: string;
-  agent_display_name?: string;
-  agent_owner_uid?: string;
-  agent_type?: AgentType;
-  agent_description?: string;
-  agent_icon_url?: string;
-  agent_context_mode?: 'stateless' | 'stateful';
-  agent_tags?: string[];
-  agent_version?: string;
-  agent_updated_at?: number;
 }
 
-// ── Chat & Sessions ──
-export interface ChatRequest {
-  message: string;
-  session_id?: string;
-  stream?: boolean;
+export interface ListSentInvitationsResponse {
+  items: SentInvitationResponse[];
 }
 
-export interface ChatMessage {
-  role: string;
-  content: string;
+// ── Documents ──
+// Upload 三态:
+//   already_indexed  → 同内容已存在,doc_id 即为已有文档
+//   queued           → 已入队向量化,轮询 job_id 看进度
+//   filename_conflict → 同名异内容,需用户确认后带 overwrite=true 重试
+export type UploadStatus = 'already_indexed' | 'queued' | 'filename_conflict';
+
+// 注:snowflake ID (doc_id / job_id / existing_doc_id / uploader_id 等) 是 uint64,
+// 超过 JS Number 精度 (2^53),后端已序列化为字符串避免精度丢失。拼 URL / 比较直接用 string。
+export interface UploadResponse {
+  status: UploadStatus;
+  doc_id?: string;
+  job_id?: string;
+  content_hash?: string;
+  existing_doc_id?: string;
+  existing_file_name?: string;
 }
 
-export interface ChatResponse {
-  session_id: string;
-  message: ChatMessage;
-}
-
-export interface SessionResponse {
-  session_id: string;
-  agent_id: string;
+export interface DocumentDTO {
+  id: string;
   title: string;
-  context_mode: 'stateless' | 'stateful';
-  created_at: number;
-  updated_at: number;
-}
-
-export interface MessageResponse {
-  id: string;
-  role: string;
-  content: string;
-  created_at: number;
-}
-
-// ── Document ──
-
-/** 文档来源。user = 用户上传;ai-generated = 未来 AI 生成回写的产物(目前无数据)。 */
-export type DocumentSource = 'user' | 'ai-generated';
-
-export interface DocumentResponse {
-  id: string;
-  org_id: string;
-  uploader_id: string;
-  /** 后端从 users.display_name 回填;未拿到时后端省略此字段。 */
-  uploader_display_name?: string;
-  title: string;
-  mime_type: string;
   file_name: string;
-  size_bytes: number;
-  /** 文档来源,后端兜底空串为 'user'。前端可据此给 AI 产物加标记。 */
-  source: DocumentSource;
+  provider: string;
+  mime_type: string;
+  version: string;
+  chunk_count: number;
+  content_byte_size: number;
+  uploader_id: string;
+  // M2:doc 所属的"知识源"id;前端用于跳转到 source 详情 / 显示归属。
+  // 历史 doc backfill 后 != 0;新 doc 在上传时由 handler 调 source.EnsureManualUpload 拿到。
+  knowledge_source_id?: string;
   created_at: number;
   updated_at: number;
-  /** 相似度 0-1,仅 mode=semantic 时返回;=1-cosine_distance/2。 */
-  similarity?: number;
-  /** 命中文档里最匹配片段的前 ~200 字,超长带省略号;仅 mode=semantic 返。 */
-  matched_snippet?: string;
 }
 
-export interface UpdateDocumentRequest {
-  title?: string;
+export interface ListDocsResponse {
+  docs: DocumentDTO[];
+  next_cursor?: string;
 }
 
-export interface ListDocumentsResponse {
-  items: DocumentResponse[];
+export interface GetDocResponse {
+  doc: DocumentDTO;
+  chunks_indexed: number;
+  chunks_failed: number;
+}
+
+// 一条历史版本。is_current 由后端直接算好(等于 documents.version == version_hash)。
+// 版本数量受 OSS.MaxVersionsPerDocument 限制(默认 10),所以不做分页。
+export interface DocumentVersionResponse {
+  version_hash: string;
+  file_size: number;
+  created_at: number;
+  is_current: boolean;
+}
+
+export interface ListDocumentVersionsResponse {
+  items: DocumentVersionResponse[];
+}
+
+// ── Permission Groups (M1) ──
+// 权限组是 per-org 的"用户集合",用于资源 ACL 的授权目标。
+// 任何 org 成员都可建组(创建者自动成为 owner 兼成员);
+// 改名 / 删组 / 加减成员是组 owner 专属(service 层硬规则,owner 自己不能被踢)。
+export interface PermissionGroup {
+  id: string;
+  org_id: string;
+  name: string;
+  owner_user_id: string;
+  member_count: number;
+  created_at: number;
+  updated_at: number;
+}
+
+export interface ListGroupsResponse {
+  items: PermissionGroup[];
   total: number;
   page: number;
   size: number;
 }
 
-// ── Document precheck (upload 分流) ──
-
-/** 后端 Upload 三分支的预演结果,加上一个"本地/服务端拒绝"分支。 */
-export type PrecheckAction = 'create' | 'overwrite' | 'duplicate' | 'reject';
-
-/** 后端 const.go::PrecheckReason* 的全集。前端据此做 i18n。 */
-export type PrecheckReasonCode =
-  | 'new_file'
-  | 'same_filename_new_content'
-  | 'identical_content_exists'
-  | 'file_too_large'
-  | 'mime_unsupported'
-  | 'empty_file'
-  | 'invalid_content_hash';
-
-export interface PrecheckCandidate {
-  file_name: string;
-  size_bytes: number;
-  mime_type: string;
-  /** sha256(file_bytes) 的 hex,前端用 crypto.subtle.digest 本地算。 */
-  content_hash: string;
+export interface CreateGroupRequest {
+  name: string;
 }
 
-export interface PrecheckRequest {
-  /** 单次最多 50 个,见 document.MaxPrecheckBatch。 */
-  files: PrecheckCandidate[];
+export interface UpdateGroupRequest {
+  name?: string;
 }
 
-export interface PrecheckResultEntry {
-  file_name: string;
-  action: PrecheckAction;
-  reason_code: PrecheckReasonCode;
-  /** 仅 action=duplicate 时非空,指向 hash 命中的那条已存在文档。 */
-  existing?: DocumentResponse;
-  /** 仅 action=overwrite 时非空,所有同名候选,让用户选覆盖目标或选择新建。 */
-  existing_list?: DocumentResponse[];
+export interface AddGroupMemberRequest {
+  user_id: string;
 }
 
-export interface PrecheckResponse {
-  /** 顺序与请求 files 一一对应。 */
-  results: PrecheckResultEntry[];
+export interface GroupMemberEntry {
+  user_id: string;
+  joined_at: number;
 }
 
-export interface UploadConfigResponse {
-  max_file_size_bytes: number;
-  allowed_mime_types: string[];
-  /** 索引三元(chunker/embedder/pg)是否齐备。false 时前端应灰掉语义搜索切换,避免用户点了撞 503。 */
-  semantic_search_enabled: boolean;
-}
-
-/** 搜索模式。fuzzy 走 MySQL LIKE(当前默认),semantic 走 pgvector cosine。 */
-export type SearchMode = 'fuzzy' | 'semantic';
-
-// ── Document chunk search ──
-
-/**
- * 一条 chunk 级检索结果。和 DocumentResponse 的差别:
- *   - DocumentResponse(mode=semantic):一篇文档 + 最佳 snippet,doc 粒度。
- *   - ChunkSearchResult:一段原文命中,chunk 粒度。保留 doc_id + chunk_idx 作引用定位;
- *     同一 doc 的多个 chunk 都会返回,不 dedup。
- *
- * 前端展示 content 即是"片段全文",不必再下载 OSS 源文档。
- */
-export interface ChunkSearchResult {
-  doc_id: string;
-  chunk_idx: number;
-  /** chunk 原文段落,典型 500-1500 字符。 */
-  content: string;
-  /** 相似度 0-1,越大越相关;= 1 - cosine_distance/2。 */
-  similarity: number;
-  /** 冗余给 UI 用:片段来自哪篇文档。 */
-  doc_title: string;
-  /** 冗余给 UI 用:过滤/标记 AI 产物。 */
-  doc_source: DocumentSource;
-}
-
-export interface ListChunksResponse {
-  items: ChunkSearchResult[];
-  /** = items.length(此 API 不分页,总数就是返回条数)。 */
+export interface ListGroupMembersResponse {
+  items: GroupMemberEntry[];
   total: number;
-  /** 服务端实际使用的 topK(可能被 clamp 过,和请求传的不一定相等)。 */
-  top_k: number;
+  page: number;
+  size: number;
 }
 
-// ── Integrations:第三方 OAuth(飞书/google/slack/...)──
+// ── Sources / 知识源 (M2 + M3) ──
+// 每个 doc 必属于一个 source;source 是权限承载者(visibility + ACL 都挂在 source 上)。
+// - manual_upload:默认收件箱,每 user 每 org lazy 创建一条
+// - custom:       用户自建的命名数据源,同一 owner 下 name 唯一
+// 后续扩展 kind:gitlab_repo / feishu_space 等
+export type SourceKind = 'manual_upload' | 'custom' | string;
+export type SourceVisibility = 'org' | 'group' | 'private';
 
-/**
- * 飞书集成当前状态。
- * connected=false 时其他字段都为 undefined,前端只显示"连接"按钮。
- */
-export interface FeishuStatusResponse {
-  connected: boolean;
-  /** 授权飞书账号的 open_id,connected=true 时才有。 */
-  open_id?: string;
-  name?: string;
-  email?: string;
-  /** 上次后台 sync 完成时间(unix seconds),undefined = 从未同步过。 */
-  last_sync_at?: number;
-  /** 最早授权时间(unix seconds)。 */
-  connected_at?: number;
-  /**
-   * 当前是否有活跃的飞书同步任务(queued 或 running)。
-   * 有值 → 前端 mount 时直接用此 id 走 /async-jobs/:id 轮询,跨页面跳转、刷新不丢进度。
-   */
-  active_sync_job_id?: number;
-  /**
-   * 最近一次同步任务若为 failed 状态,返该 job 的 id。仅在无活跃任务时才会给。
-   * 前端拉该 job 详情 → 展示"失败 + 重试"横幅,避免 toast 错过导致用户看不到失败提示。
-   */
-  last_failed_sync_job_id?: number;
-  /**
-   * 最近一次同步"整体成功但有部分文件失败"时的 job id。前端拉详情 → 展示"部分失败"横幅,
-   * 让用户看到哪些文件挂了 / 为啥挂。和 last_failed_sync_job_id 互斥。
-   */
-  last_partial_sync_job_id?: number;
-}
-
-/**
- * 点"连接飞书"后后端返回的内容:前端 window.location = auth_url 跳去飞书授权页。
- * state 是 HMAC-签的,同时回传纯粹给 debug 看。
- */
-export interface FeishuConnectResponse {
-  auth_url: string;
-  state: string;
-}
-
-/**
- * POST /integrations/feishu/sync 的响应。
- * - already_running=true 表示此前已有同步任务在跑,job_id 指向那条;前端应直接开始轮询它。
- * - already_running=false 是新建的任务。两种情况前端消费逻辑一致。
- */
-export interface FeishuSyncResponse {
-  job_id: number;
-  already_running: boolean;
-}
-
-/**
- * 飞书 App 凭证配置(per org)。由 org admin 在 UI 上填入。
- *
- * 字段说明:
- *   - configured: 该 org 是否已填过应用凭证。false 时其他字段除 redirect_uri 都 undefined。
- *   - app_id: 飞书开放平台"自建应用"的 App ID(明文,非敏感)。
- *   - redirect_uri: OAuth 回调地址,部署级,admin 需要把此 URL 加到飞书开发者后台的白名单。
- *   - app_secret 永远不回传(即使已配置过)—— PUT 时每次必须重填。
- */
-export interface FeishuConfigResponse {
-  configured: boolean;
-  app_id?: string;
-  redirect_uri: string;
-  created_at?: number;
-  updated_at?: number;
-}
-
-/**
- * PUT /integrations/feishu/config 请求体。两个字段都必填(即使只想改 app_id 也要重填 app_secret
- * —— 避免看不见的半态更新)。
- */
-export interface FeishuConfigPutRequest {
-  app_id: string;
-  app_secret: string;
-}
-
-// ── GitLab 集成(PAT 模式,无 OAuth)──
-
-/**
- * GitLab 实例配置(per org)。由 org admin 在 UI 上填入 base_url;
- * 和 OrgFeishuConfig 对称,不同 org 可接不同 GitLab 实例。
- *
- * 字段说明:
- *   - configured: 该 org 是否已配置 GitLab 实例。false 时其他字段 undefined,前端 disable PAT 表单。
- *   - base_url: GitLab API 根,必须以 /api/v4 结尾,前端展示 + 用来推导 PAT 创建页链接。
- *   - insecure_skip_verify: 仅内网自签证书场景 true,生产环境建议 false。
- */
-export interface GitLabConfigResponse {
-  configured: boolean;
-  base_url?: string;
-  insecure_skip_verify: boolean;
-  created_at?: number;
-  updated_at?: number;
-}
-
-/**
- * PUT /integrations/gitlab/config 请求体。
- * base_url 必须以 /api/v4 结尾(后端 gitlab.Config.Validate 强校验);
- * insecure_skip_verify 默认 false,只有内网自签证书场景才置 true。
- */
-export interface GitLabConfigPutRequest {
-  base_url: string;
-  insecure_skip_verify: boolean;
-}
-
-/**
- * GitLab 连接状态。
- * connected=false 时其他字段都为 undefined,前端只展示 PAT 输入框。
- *
- * 认证模式:仅支持 Personal Access Token,用户手动粘贴;不做 OAuth 跳转。
- */
-export interface GitLabStatusResponse {
-  connected: boolean;
-  /** GitLab 端 user id(数字型),来自 GET /user。 */
-  user_id?: number;
-  /** GitLab 用户名(@xxx),展示用。 */
-  username?: string;
-  /** 用户展示名。 */
-  name?: string;
-  email?: string;
-  /** GitLab 头像 URL,直接渲染 <img>。 */
-  avatar_url?: string;
-  /** GitLab 个人页 URL,点用户名时跳转。 */
-  web_url?: string;
-  /** 首次连接时间(unix seconds)。 */
-  connected_at?: number;
-  /** 上次同步完成时间(unix seconds),undefined = 从未同步过。 */
-  last_sync_at?: number;
-  /**
-   * 当前是否有活跃的 GitLab 代码同步任务(queued 或 running)。
-   * 有值 → 前端 mount 时直接用此 id 走 /async-jobs/:id 轮询,跨页面跳转、刷新不丢进度。
-   */
-  active_sync_job_id?: number;
-  /**
-   * 最近一次同步任务若为 failed 状态,返该 job 的 id。仅在无活跃任务时才会给。
-   * 前端拉该 job 详情 → 展示"失败 + 重试"横幅。
-   */
-  last_failed_sync_job_id?: number;
-  /**
-   * 最近一次同步"整体成功但有部分文件失败"时的 job id。前端拉详情 → 展示"部分失败"横幅。
-   * 和 last_failed_sync_job_id 互斥。
-   */
-  last_partial_sync_job_id?: number;
-}
-
-/**
- * POST /integrations/gitlab/sync 的响应。
- * - already_running=true 表示此前有同步任务在跑,job_id 指向那条;前端应直接开始轮询它。
- * - already_running=false 是新建的任务。两种情况前端消费逻辑一致。
- */
-export interface GitLabSyncResponse {
-  job_id: number;
-  already_running: boolean;
-}
-
-/**
- * 代码同步任务失败条目。对应后端 internal/code/service.FailedItem。
- *   - ref:仓库级失败时 = "group/subgroup/repo-name";文件级失败时 = "group/subgroup/repo-name:path/to/foo.go"
- *   - error:失败根因(err.Error())
- */
-export interface CodeSyncFailedItem {
-  ref: string;
-  error: string;
-}
-
-/**
- * 单个代码仓库的同步概览 —— 对应后端 internal/code/handler.repoSummaryResponse。
- *
- * 字段由聚合查询(LEFT JOIN code_files + code_chunks)算出,反映"这个 repo 在 Synapse 里的现状":
- *   - file_count / chunk_count:当前已索引的文件数和函数级切片数
- *   - failed_chunk_count:embed 失败的 chunk(多半是 embedding 限流 / 超长 / 其他)
- *   - last_synced_at:最近一次完整同步完成的时间(不是最近一次触发)
- */
-export interface CodeRepoSummary {
-  id: number;
-  path_with_namespace: string;
-  web_url?: string;
-  default_branch: string;
-  /** unix seconds,undefined = 新 upsert 还没跑完 Phase 2(稀有)或历史数据没回填 */
-  last_synced_at?: number;
-  archived: boolean;
+export interface SourceResponse {
+  id: string;
+  org_id: string;
+  kind: SourceKind;
+  owner_user_id: string;
+  external_ref?: string;
+  name: string;
+  visibility: SourceVisibility;
   created_at: number;
-  file_count: number;
-  chunk_count: number;
-  failed_chunk_count: number;
+  updated_at: number;
 }
 
-/**
- * GET /api/v2/orgs/:slug/code/repositories 响应。
- */
-export interface CodeRepoListResponse {
-  repositories: CodeRepoSummary[];
-}
-
-/**
- * 代码同步任务 result 字段结构。对应后端 internal/code/service.SyncResult。
- *
- * 语义:一次 sync 可能涉及多个 repo,每个 repo 又有多个 file;统计三元组(repos/files/chunks)
- * + 两类失败明细(按 repo 维度失败 vs 按 file 维度失败)。
- */
-export interface CodeSyncResult {
-  repos_total: number;
-  repos_synced: number;
-  /** archived / 临时不可访问 / 无文件变更的 repo 计数。不算失败。 */
-  repos_skipped: number;
-  repos_failed: number;
-  /** 新增 + 更新的文件数。 */
-  files_changed: number;
-  /** 源端消失 → 本地清除的文件数。 */
-  files_deleted: number;
-  /** ErrFileTooLarge / ErrFileGone / chunk=0 等单文件跳过。不算失败。 */
-  files_skipped: number;
-  /** 新写入 code_chunks 表的行数(向量)。 */
-  chunks_created: number;
-  failed_repos?: CodeSyncFailedItem[];
-  failed_files?: CodeSyncFailedItem[];
-  last_sync_at: number;
-}
-
-/**
- * PUT /integrations/gitlab 请求体。token 字段为用户粘贴的 PAT(glpat-...)。
- * 后端会立即调 GitLab /user 验证;无效返 400 reason=invalid_token。
- */
-export interface GitLabConnectRequest {
-  token: string;
-}
-
-/**
- * PUT /integrations/gitlab 的响应。验证通过后直接回带 GitLab 用户信息,
- * 前端可省掉"连接成功后再发一次 GET status"的往返。
- */
-export interface GitLabConnectResponse {
-  connected: boolean;
-  user_id: number;
-  username: string;
-  name?: string;
-  email?: string;
-  avatar_url?: string;
-  web_url?: string;
-}
-
-// ── Async Jobs:通用长任务轮询(飞书同步 / 未来批量操作...)──
-
-/**
- * 任务状态机。前端轮询到 IsTerminal(succeeded/failed/canceled)后停止。
- * canceled 当前后端未暴露,但枚举保留以免将来加取消功能时要改类型。
- */
-export type AsyncJobStatus =
-  | 'queued'
-  | 'running'
-  | 'succeeded'
-  | 'failed'
-  | 'canceled';
-
-/**
- * 飞书同步任务失败条目明细。对应后端的 FailedItem。
- *   - ref: source_ref JSON 字符串,稳定标识
- *   - title: 文档标题,Fetch 成功后才有,否则为 undefined
- *   - error: 失败根因(err.Error())
- */
-export interface FeishuSyncFailedItem {
-  ref: string;
-  title?: string;
-  error: string;
-}
-
-/**
- * 飞书同步任务 result 字段的结构。各 kind 自定义 schema,前端按 kind 解析。
- * 对应后端 internal/asyncjob/runners/feishusync/logic.go 的 SyncResult。
- */
-export interface FeishuSyncResult {
+export interface ListSourcesResponse {
+  items: SourceResponse[];
   total: number;
-  synced: number;
-  failed: number;
-  failed_items?: FeishuSyncFailedItem[];
-  last_sync_at: number;
+  page: number;
+  size: number;
 }
 
-/**
- * 通用任务快照。不同 kind 的 result 字段结构不同,需按 kind 断言后再解析。
- *
- * 字段对应后端 internal/asyncjob/handler/handler.go 的 JobResponse。
- */
+export interface UpdateVisibilityRequest {
+  visibility: SourceVisibility;
+}
+
+// 自建 custom 数据源的请求体。visibility 省略 → 后端默认 org。
+export interface CreateSourceRequest {
+  name: string;
+  visibility?: SourceVisibility;
+}
+
+// ── Source ACL (M3) ──
+// 一条 ACL 行表示"某 subject(group/user)对某 source 拥有 read/write 权限"。
+// 同 (source, subject) 至多一条 ACL;改 permission 走 PATCH,不能 grant 同 subject 两次(409)。
+// resource owner 隐式 admin,不能给 owner 自己授权(400)。
+export type ACLSubjectType = 'group' | 'user';
+export type ACLPermission = 'read' | 'write';
+
+export interface SourceACLEntry {
+  id: string;
+  source_id: string;
+  subject_type: ACLSubjectType;
+  subject_id: string;
+  permission: ACLPermission;
+  granted_by: string;
+  created_at: number;
+}
+
+export interface ListSourceACLResponse {
+  items: SourceACLEntry[];
+}
+
+export interface GrantSourceACLRequest {
+  subject_type: ACLSubjectType;
+  subject_id: string;
+  permission: ACLPermission;
+}
+
+export interface UpdateSourceACLRequest {
+  permission: ACLPermission;
+}
+
+// ── Audit Log (M6) ──
+// 审计行,所有权限变更都落到 permission_audit_log。
+//   - actor_user_id:操作者(系统/迁移路径记 0)
+//   - action:动作名,见 ACTION_* 常量列表
+//   - target_type / target_id:被操作对象
+//   - before / after / metadata:JSON 任意结构,前端按 action 自解释
+//
+// scope:服务端根据 caller 是否有 audit.read_all 决定:'all' = 全 org,'self' = 仅自己作为 actor
+export interface AuditLogRow {
+  id: string;
+  org_id: string;
+  actor_user_id: string;
+  action: string;
+  target_type: string;
+  target_id: string;
+  before?: Record<string, unknown> | null;
+  after?: Record<string, unknown> | null;
+  metadata?: Record<string, unknown> | null;
+  created_at: number;
+}
+
+export type AuditScope = 'all' | 'self';
+
+export interface ListAuditLogResponse {
+  items: AuditLogRow[];
+  next_before_id?: string;
+  scope: AuditScope;
+}
+
+export interface AuditLogFilter {
+  actor_user_id?: string;
+  target_type?: string;
+  target_id?: string;
+  action?: string;
+  action_prefix?: string;
+  before_id?: string;
+  limit?: number;
+}
+
+// ── AsyncJob ──
+// 对应后端 /api/v2/async-jobs/:id;docupload 任务轮询进度用。
+export type AsyncJobStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'canceled';
+
 export interface AsyncJobResponse {
-  id: number;
-  /** 任务类型。"integration.sync.feishu" / "integration.sync.gitlab" / ...。 */
+  id: string;
   kind: string;
   status: AsyncJobStatus;
   progress_total: number;
   progress_done: number;
   progress_failed: number;
-  /** 终态时的结果摘要;running/queued 时通常为 null。按 kind 断言到 FeishuSyncResult / CodeSyncResult。 */
-  result?: FeishuSyncResult | CodeSyncResult | Record<string, unknown>;
-  /** status=failed 时的根因。 */
+  result?: Record<string, unknown>;
   error?: string;
   created_at: number;
   started_at?: number;

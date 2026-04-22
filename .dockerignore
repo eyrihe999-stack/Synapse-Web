@@ -1,4 +1,11 @@
 node_modules
 dist
 .git
+.idea/
+.vscode/
+.DS_Store
+*.log
+*.swp
+*.swo
 *.md
+!README.md

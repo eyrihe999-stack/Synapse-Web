@@ -1,10 +1,10 @@
 import { create } from 'zustand';
-import type { OrgWithMyRole } from '@/types/api';
+import type { OrgMembership } from '@/types/api';
 import { orgApi } from '@/api/org';
 
 interface OrgState {
-  orgs: OrgWithMyRole[];
-  currentOrg: OrgWithMyRole | null;
+  orgs: OrgMembership[];
+  currentOrg: OrgMembership | null;
   loading: boolean;
 
   fetchOrgs: () => Promise<void>;
