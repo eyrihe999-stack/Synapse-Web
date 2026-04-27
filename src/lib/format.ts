@@ -2,6 +2,10 @@
  * 格式化时间戳为本地日期字符串。
  * 支持三种输入:Unix 秒级、Unix 毫秒级、ISO-8601 字符串(后端 time.Time 序列化结果)。
  * 0 / 空串 / 无效值统一返回占位符。
+ *
+ * 默认精度到分钟(UI 常用;秒级对大部分 CRUD 是噪音)。
+ * 要到秒 :调用方显式传 `{ year, month, day, hour, minute, second: '2-digit' }`
+ * 只要日期:显式传 `{ year, month, day }`(不带 hour/minute)
  */
 export function formatTs(
   ts: number | string | undefined | null,
@@ -17,7 +21,19 @@ export function formatTs(
     d = new Date(ms);
   }
   if (isNaN(d.getTime())) return '—';
-  return d.toLocaleDateString('zh-CN', opts ?? { year: 'numeric', month: '2-digit', day: '2-digit' });
+  // 用 toLocaleString 而非 toLocaleDateString:后者语义只为日期字段,
+  // 在部分浏览器 / 运行时里 hour/minute 会被忽略或表现不一致。
+  return d.toLocaleString(
+    'zh-CN',
+    opts ?? {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    },
+  );
 }
 
 /**
@@ -68,6 +84,34 @@ export function formatRelativeWithAbs(
 ): string {
   if (parseTs(ts) == null) return '—';
   return `${formatRelativeTs(ts)} · ${formatTs(ts, opts)}`;
+}
+
+// SECOND_PRECISION 秒级精度 —— 给审计 / session / agent 在线状态这种需要逐秒定位的场景。
+const SECOND_PRECISION: Intl.DateTimeFormatOptions = {
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+  hour: '2-digit',
+  minute: '2-digit',
+  second: '2-digit',
+  hour12: false,
+};
+
+/**
+ * 同 formatTs,但精度到秒:"2025/04/22 14:30:05"。
+ * 审计 / session 列表 / agent last_seen 这类排查用途优先。
+ */
+export function formatTsWithSeconds(ts: number | string | undefined | null): string {
+  return formatTs(ts, SECOND_PRECISION);
+}
+
+/**
+ * 同 formatRelativeWithAbs,但绝对时间精度到秒:
+ *   "3 分钟前 · 2025/04/22 14:30:05"
+ */
+export function formatRelativeWithAbsSeconds(ts: number | string | undefined | null): string {
+  if (parseTs(ts) == null) return '—';
+  return `${formatRelativeTs(ts)} · ${formatTs(ts, SECOND_PRECISION)}`;
 }
 
 /**

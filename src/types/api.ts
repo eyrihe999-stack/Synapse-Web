@@ -79,6 +79,9 @@ export interface OAuthExchangeRequest {
 
 export interface UserProfile {
   id: string;
+  // 对应 principals.id;ChannelMember / task.assignee / reactions 等存 principal_id,
+  // 前端判定"这条数据是不是我的"必须用 principal_id 比对(不是 user.id)。
+  principal_id: string;
   email: string;
   display_name: string;
   avatar_url: string;
@@ -289,6 +292,9 @@ export const PERMISSION_LABELS: Record<Permission, string> = {
 // 枚举(0=pending_verify / 1=active / 2=banned / 3=deleted)。
 export interface MemberResponse {
   user_id: string;
+  // principal_id 是 user 的身份根 id(users.principal_id),用于把"人"映射到
+  // channel_members / tasks 存的 principal_id。后端 JOIN 缺失时为 "0"。
+  principal_id: string;
   email?: string;
   display_name?: string;
   avatar_url?: string;
@@ -630,6 +636,61 @@ export interface AuditLogFilter {
   limit?: number;
 }
 
+// ── Agents ──
+// Agent WS 网关的 agent 档案 —— CRUD + apikey 生命周期。
+// 对应后端 /api/v2/orgs/:slug/agents/*(模块号 25)。
+
+// AgentKind agent 分类:
+//   - system:apikey 身份,代表服务 / 自动化流程接入。仅 owner/admin 可创建,V1 唯一类型
+//   - user  :(未来)JWT 身份,代表某个 user 发起调用;成员可自建
+export type AgentKind = 'system' | 'user';
+
+export interface AgentResponse {
+  id: string;              // snowflake 序列化为 string
+  // principal_id 该 agent 在 principals 表的身份根 id,channel_members / task.assignee
+  // 都存 principal_id,@mention / 权限检查靠它定位;全局 agent(org_id='0')也有正常分配的非 0 值。
+  principal_id: string;
+  agent_id: string;        // 握手时的 X-Agent-ID,系统生成 agt_<...>
+  org_id: string;
+  kind: AgentKind;
+  display_name: string;
+  enabled: boolean;
+  last_seen_at?: number;   // unix seconds,handshake 成功时刷新
+  rotated_at?: number;     // unix seconds,rotate-key 时刷新
+  created_by_uid: string;
+  created_at: number;
+  updated_at: number;
+  online: boolean;         // Hub 维度的当前在线状态(不在 DB,运行时填)
+}
+
+export interface CreateAgentRequest {
+  display_name: string;
+}
+
+export interface UpdateAgentRequest {
+  display_name?: string;
+  enabled?: boolean;
+}
+
+// 创建 agent 时 apikey 只返一次 —— 关闭弹窗后再也拿不到。
+export interface CreateAgentResponse {
+  agent: AgentResponse;
+  apikey: string;
+}
+
+// rotate-key 同上,新 apikey 只返一次。
+export interface RotateKeyResponse {
+  agent: AgentResponse;
+  apikey: string;
+}
+
+export interface ListAgentResponse {
+  items: AgentResponse[];
+  total: number;
+  offset: number;
+  limit: number;
+}
+
 // ── AsyncJob ──
 // 对应后端 /api/v2/async-jobs/:id;docupload 任务轮询进度用。
 export type AsyncJobStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'canceled';
@@ -646,4 +707,460 @@ export interface AsyncJobResponse {
   created_at: number;
   started_at?: number;
   finished_at?: number;
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// Collaboration(Synapse PR #2 / #4' / #6')—— 项目 / Channel / 消息 / 任务
+// ══════════════════════════════════════════════════════════════════════════
+//
+// 后端 DTO 参考:
+//   internal/channel/dto/*.go(project / version / channel / member / message / kb_ref)
+//   internal/task/dto/*.go   (task / submission / review)
+//
+// 说明:
+//   - 后端目前把 uint64 id 字段序列化为 JSON 数字(非 ",string")。本项目里
+//     org/project/channel/task 的 id 走 MySQL AUTO_INCREMENT,小整数为主,
+//     近期不会撞 JS Number 精度上限(2^53-1 ≈ 9e15)。长期 Snowflake 化时
+//     需要同步把 DTO 加 ",string" 并把这里的 number 换成 string。
+//   - 时间戳后端用 `time.Time`(RFC 3339 string),前端用 `string` 存,展示前
+//     再 `new Date(...)` 解。
+
+// ── Project ──
+export interface ProjectResponse {
+  id: number;
+  org_id: number;
+  name: string;
+  description?: string;
+  created_by: number;
+  created_at: string;
+  updated_at: string;
+  archived_at?: string;
+}
+
+export interface CreateProjectRequest {
+  org_id: number;
+  name: string;
+  description?: string;
+}
+
+// ── Version ──
+// 当前 PR 暂不暴露 UI,但保留类型以便 Project 详情页列出。
+export interface VersionResponse {
+  id: number;
+  project_id: number;
+  name: string;
+  status: string;
+  target_date?: string;
+  created_at: string;
+}
+
+export interface CreateVersionRequest {
+  name: string;
+  status: string;
+}
+
+// ── Channel ──
+export type ChannelStatus = 'open' | 'archived';
+
+export interface ChannelResponse {
+  id: number;
+  org_id: number;
+  project_id: number;
+  name: string;
+  purpose?: string;
+  status: ChannelStatus;
+  created_by: number;
+  created_at: string;
+  updated_at: string;
+  archived_at?: string;
+}
+
+export interface CreateChannelRequest {
+  project_id: number;
+  name: string;
+  purpose?: string;
+}
+
+// ── Channel Member ──
+export type ChannelMemberRole = 'owner' | 'member' | 'observer';
+
+export interface ChannelMemberResponse {
+  channel_id: number;
+  principal_id: number;
+  role: ChannelMemberRole;
+  joined_at: string;
+}
+
+export interface AddChannelMemberRequest {
+  principal_id: number;
+  role: ChannelMemberRole;
+}
+
+export interface UpdateChannelMemberRoleRequest {
+  role: ChannelMemberRole;
+}
+
+// ── Channel Message ──
+// 服务端支持的 kind;V1 只有 text / system_event 两种。
+export type MessageKind = 'text' | 'system_event';
+
+// ReplyPreview 引用卡片:作者 + 正文前若干字。目标消息被硬删除时 missing=true。
+export interface ReplyPreview {
+  message_id: number;
+  author_principal_id: number;
+  body_snippet: string;
+  missing: boolean;
+}
+
+// ReactionEntry 一条消息上 "同一 emoji 被哪几个 principal 打过"(PR #12')。
+// 前端按 principal_ids 查 displayName 渲染成 `👍 Alice, Bob`。
+export interface ReactionEntry {
+  emoji: string;
+  principal_ids: number[];
+}
+
+// 预设 emoji 白名单 —— 和后端 const.go AllowedReactionEmojis 对齐。
+// 任何不在此集合的 emoji 后端都会拒(400 CodeReactionEmojiInvalid)。
+export const ALLOWED_REACTION_EMOJIS = [
+  '👍', '👎', '❤️', '🎉', '🚀', '👀',
+  '🙏', '😂', '🔥', '✅', '❌', '🤔',
+] as const;
+
+export interface ChannelMessageResponse {
+  id: number;
+  channel_id: number;
+  author_principal_id: number;
+  body: string;
+  kind: MessageKind;
+  mentions: number[]; // principal_id 数组
+  reactions?: ReactionEntry[]; // 可选,空不返
+  reply_to_message_id?: number; // 引用另一条消息的 id(不引用时缺省)
+  reply_to_preview?: ReplyPreview; // 引用卡片预览(目标消息的作者 + 正文前若干字)
+  source_event_id?: string; // kind=system_event 时非空,标识来源 Redis stream event ID(幂等键)
+  created_at: string;
+}
+
+// SystemEventBody kind=system_event 的 body(JSON 字符串)结构。
+// event_type 取值见 collaboration-roadmap.md PR #11' 清单(14 种);未知类型
+// 前端 SystemEventCard 降级渲染"未知事件"。
+export interface SystemEventBody {
+  event_type: string;
+  actor_principal_id: number;
+  detail: Record<string, string>;
+}
+
+export interface ListMessagesResponse {
+  messages: ChannelMessageResponse[];
+  cursor: number; // 0 表示无更多
+}
+
+export interface PostMessageRequest {
+  body: string;
+  mentions?: number[];
+  reply_to_message_id?: number;
+}
+
+// ── Channel KB Refs ──
+// 一条 KBRef 要么挂 source,要么挂 document(恰好一个非 0)。
+export interface ChannelKBRefResponse {
+  id: number;
+  channel_id: number;
+  kb_source_id?: number;
+  kb_document_id?: number;
+  added_by: number;
+  added_at: string;
+}
+
+export interface AddKBRefRequest {
+  kb_source_id?: number;
+  kb_document_id?: number;
+}
+
+// ── Channel 共享文档(PR #9') ────────────────────────────────────────────────
+
+export type ChannelDocumentKind = 'md' | 'text';
+
+export interface ChannelDocumentLockResponse {
+  held_by_principal_id: number;
+  locked_at: string;
+  expires_at: string;
+  acquired: boolean; // 仅在抢/续锁返回时有意义;Get 拼回时为 false
+}
+
+// 后端 list/get 都用同一个 response struct;list 也会带 lock(锁未空时)
+export interface ChannelDocumentResponse {
+  id: number;
+  channel_id: number;
+  org_id: number;
+  title: string;
+  content_kind: ChannelDocumentKind;
+  current_version?: string;
+  current_byte_size: number;
+  created_by_principal_id: number;
+  updated_by_principal_id: number;
+  created_at: string;
+  updated_at: string;
+  deleted_at?: string;
+  lock?: ChannelDocumentLockResponse;
+}
+
+export interface ChannelDocumentVersionResponse {
+  id: number;
+  document_id: number;
+  version: string;
+  byte_size: number;
+  edited_by_principal_id: number;
+  edit_summary?: string;
+  created_at: string;
+}
+
+export interface ChannelDocumentContentResponse {
+  document: ChannelDocumentResponse;
+  version: ChannelDocumentVersionResponse;
+  content: string;
+}
+
+export interface SaveChannelDocumentVersionResponse {
+  document: ChannelDocumentResponse;
+  version: ChannelDocumentVersionResponse;
+  created: boolean; // false = 同 hash 已存在,未实际写新版
+}
+
+export interface LockOperationResponse {
+  lock: ChannelDocumentLockResponse;
+}
+
+export interface CreateChannelDocumentRequest {
+  title: string;
+  content_kind: ChannelDocumentKind;
+}
+
+export interface SaveChannelDocumentVersionRequest {
+  content: string;
+  edit_summary?: string;
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// Task(PR #4')
+// ══════════════════════════════════════════════════════════════════════════
+
+// task.status —— 和后端 internal/task/const.go 对齐。
+//   draft                用于保留字段,前端不会遇到
+//   open                 已创建,未派人(或被取消 assignee 后回到此态)
+//   in_progress          有 assignee 并开始工作
+//   submitted            已提交,等审批
+//   approved             审批通过(终态)
+//   revision_requested   审批要求修改,可再 submit
+//   rejected             审批驳回(终态)
+//   cancelled            取消(终态,注意是英式拼写,后端 StatusCancelled)
+export type TaskStatus =
+  | 'draft'
+  | 'open'
+  | 'in_progress'
+  | 'submitted'
+  | 'approved'
+  | 'revision_requested'
+  | 'rejected'
+  | 'cancelled';
+
+export const TASK_STATUS_OPEN: TaskStatus[] = ['open', 'in_progress', 'submitted', 'revision_requested'];
+export const TASK_STATUS_CLOSED: TaskStatus[] = ['approved', 'rejected', 'cancelled'];
+
+// task.output_spec_kind —— 产物形态。V1 只 markdown / text。
+export type TaskOutputKind = 'markdown' | 'text';
+
+// task_submissions.content_kind —— 普通任务和 task.output_spec_kind 一致;
+// 轻量任务(task.is_lightweight=true)的 submission 落 'none',无文件。
+export type SubmissionContentKind = TaskOutputKind | 'none';
+
+// review.decision —— 后端 internal/task/const.go 的 DecisionApproved /
+// DecisionRequestChanges / DecisionRejected。写 api 请求体时原样传。
+export type ReviewDecision = 'approved' | 'request_changes' | 'rejected';
+
+export interface TaskResponse {
+  id: number;
+  org_id: number;
+  channel_id: number;
+  title: string;
+  description?: string;
+  /**
+   * 任务发起人(意图所有者)。手动创建 = 操作者本人;agent 代派 = 那个 agent 的 owner user。
+   */
+  created_by_principal_id: number;
+  /**
+   * 代派 agent 的 principal_id;0 / undefined 表示手动创建。
+   * 用于"由 X 通过 Y 代派"的展示。
+   */
+  created_via_principal_id?: number;
+  assignee_principal_id?: number;
+  status: TaskStatus;
+  output_spec_kind: TaskOutputKind;
+  /**
+   * 轻量任务:submit 不要文件,只用 inline_summary 描述"做了什么"。
+   * 适合 review PR / 口头汇报 / 确认某事完成等无产物场景。
+   */
+  is_lightweight?: boolean;
+  required_approvals: number;
+  due_at?: string;
+  submitted_at?: string;
+  closed_at?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface TaskSubmissionResponse {
+  id: number;
+  task_id: number;
+  submitter_principal_id: number;
+  /** 轻量任务的 submission content_kind 是 'none',oss_key 空,byte_size 为 0。 */
+  content_kind: SubmissionContentKind;
+  oss_key: string;
+  byte_size: number;
+  inline_summary?: string;
+  created_at: string;
+}
+
+export interface TaskReviewResponse {
+  id: number;
+  task_id: number;
+  submission_id: number;
+  reviewer_principal_id: number;
+  decision: ReviewDecision;
+  comment?: string;
+  created_at: string;
+}
+
+export interface TaskDetailResponse {
+  task: TaskResponse;
+  reviewers: number[]; // reviewer principal_id 列表
+  submissions: TaskSubmissionResponse[];
+  reviews: TaskReviewResponse[];
+}
+
+export interface CreateTaskRequest {
+  channel_id: number;
+  title: string;
+  description?: string;
+  output_spec_kind: TaskOutputKind;
+  /** true = 轻量任务,submit 不要文件。默认 false。 */
+  is_lightweight?: boolean;
+  assignee_principal_id?: number;
+  reviewer_principal_ids?: number[];
+  required_approvals?: number; // 0 自动填 1
+}
+
+export interface CreateTaskResponse {
+  task: TaskResponse;
+  reviewers: number[];
+}
+
+export interface SubmitTaskRequest {
+  /**
+   * 普通任务必填,等于 task.output_spec_kind。
+   * 轻量任务(task.is_lightweight=true)留空,后端会落 'none'。
+   */
+  content_kind?: TaskOutputKind;
+  /** 普通任务必填(UTF-8 markdown / plain);轻量任务必须留空。 */
+  content?: string;
+  /** 普通任务可选 ≤ 512 字符;轻量任务必填(替代 content 描述"做了什么")。 */
+  inline_summary?: string;
+}
+
+export interface SubmitTaskResponse {
+  task: TaskResponse;
+  submission: TaskSubmissionResponse;
+}
+
+export interface ReviewTaskRequest {
+  submission_id: number;
+  decision: ReviewDecision;
+  comment?: string;
+}
+
+export interface ReviewTaskResponse {
+  task: TaskResponse;
+  review: TaskReviewResponse;
+}
+
+// ── PAT (Personal Access Token) ──
+//
+// 后端 /api/v2/users/me/pats:user 自助管理 PAT。token 明文只在 create 响应里出现一次,
+// 之后数据库只存 sha256 hash。expires_in_seconds = 0 表示永不过期。
+export interface CreatePATRequest {
+  label: string;
+  expires_in_seconds?: number;
+}
+
+export interface CreatePATResponse {
+  id: number;
+  /** **明文 token,仅此一次返回**。形如 syn_pat_xxxxx。 */
+  token: string;
+  label: string;
+  agent_principal_id: number;
+  expires_at?: string;
+  created_at: string;
+}
+
+export interface PATListItem {
+  id: number;
+  label: string;
+  agent_principal_id: number;
+  last_used_at?: string;
+  expires_at?: string;
+  revoked_at?: string;
+  created_at: string;
+}
+
+// ── Channel 附件(图片等,Markdown 内嵌引用)──
+//
+// 后端 /api/v2/channels/:id/attachments/{upload-url, upload-commit, :att_id}。
+// 图片粘贴 / 拖拽 / 选文件 → presign → PUT 直传 OSS → commit 拿可在 markdown
+// 直接引用的相对 URL(/api/v2/channels/<cid>/attachments/<aid>)。
+
+/** 第一版允许的 MIME 白名单(后端硬约束)。SVG 不在内(脚本注入风险)。 */
+export type AttachmentMimeType = 'image/png' | 'image/jpeg' | 'image/gif' | 'image/webp';
+
+export interface RequestChannelAttachmentUploadURLRequest {
+  /** 必传;必须是 AttachmentMimeType 之一,否则后端 400。 */
+  mime_type: string;
+  /** 可选;原始文件名透传到附件元数据(不影响 OSS key)。 */
+  filename?: string;
+}
+
+export interface ChannelAttachmentUploadURLResponse {
+  /** OSS 直传 URL;客户端 PUT 时 **必须** 带 `Content-Type: <content_type>`。 */
+  upload_url: string;
+  /** 5min 单次有效;commit 阶段携带。 */
+  commit_token: string;
+  /** PUT 时绑定的 Content-Type,与 mime_type 一致。 */
+  content_type: string;
+  expires_at: string;
+  max_byte_size: number;
+}
+
+export interface CommitChannelAttachmentUploadRequest {
+  commit_token: string;
+}
+
+export interface ChannelAttachmentResponse {
+  id: number;
+  channel_id: number;
+  org_id: number;
+  /**
+   * 直接可拷进 markdown 的相对路径,如 `/api/v2/channels/123/attachments/456`。
+   * 浏览器 <img src> 引用 → 后端鉴权后 302 到 OSS 短期签名 URL。
+   */
+  url: string;
+  mime_type: string;
+  filename?: string;
+  byte_size: number;
+  sha256: string;
+  uploaded_by_principal_id: number;
+  created_at: string;
+}
+
+export interface CommitChannelAttachmentUploadResponse {
+  attachment: ChannelAttachmentResponse;
+  /** true 表示同 (channel_id, sha256) 已有行,本次 OSS 对象被服务端删除以避孤儿。 */
+  reused: boolean;
 }

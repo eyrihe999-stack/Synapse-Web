@@ -9,7 +9,7 @@ import { apiCall } from '@/lib/api-helpers';
 import { useAuthStore } from '@/store/auth';
 import { useOrgStore } from '@/store/org';
 import { getDeviceId } from '@/lib/device';
-import { formatTs } from '@/lib/format';
+import { formatTsWithSeconds } from '@/lib/format';
 import type { SessionEntry } from '@/types/api';
 import { Monitor, LogOut, X, Smartphone, Globe, Loader2, ShieldAlert } from 'lucide-react';
 
@@ -121,7 +121,7 @@ export function SessionsPage() {
                       <span>·</span>
                       <span>{s.login_ip || '—'}</span>
                       <span>·</span>
-                      <span>登录于 {formatTs(s.login_at, { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}</span>
+                      <span>登录于 {formatTsWithSeconds(s.login_at)}</span>
                     </div>
                   </div>
                   <Button

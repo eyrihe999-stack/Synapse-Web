@@ -17,7 +17,7 @@ import { groupApi } from '@/api/permission';
 import { memberApi, roleApi } from '@/api/org';
 import { getErrorMessage } from '@/lib/api-helpers';
 import { toast } from '@/components/ui/Toast';
-import { formatRelativeWithAbs } from '@/lib/format';
+import { formatRelativeWithAbsSeconds } from '@/lib/format';
 import type {
   AuditLogRow,
   AuditScope,
@@ -372,7 +372,7 @@ function AuditRow({
           </div>
           <p className="text-[12px] text-text-primary mt-1 leading-snug">{description}</p>
           <p className="text-[11px] text-text-muted mt-0.5">
-            {formatRelativeWithAbs(row.created_at)}
+            {formatRelativeWithAbsSeconds(row.created_at)}
           </p>
         </div>
       </button>

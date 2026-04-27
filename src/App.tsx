@@ -13,6 +13,7 @@ import { MembersPage } from '@/pages/MembersPage';
 import { RolesPage } from '@/pages/RolesPage';
 import { GroupsPage } from '@/pages/GroupsPage';
 import { SourcesPage } from '@/pages/SourcesPage';
+import { AgentsPage } from '@/pages/AgentsPage';
 import { AuditLogPage } from '@/pages/AuditLogPage';
 import { InvitePage } from '@/pages/InvitePage';
 import { MyInvitationsPage } from '@/pages/MyInvitationsPage';
@@ -20,8 +21,16 @@ import { KnowledgePage } from '@/pages/KnowledgePage';
 import { KnowledgeDocsTab } from '@/pages/knowledge/KnowledgeDocsTab';
 import { DocumentDetailPage } from '@/pages/knowledge/DocumentDetailPage';
 import { ComingSoon } from '@/pages/knowledge/ComingSoon';
+import { ProjectsPage } from '@/pages/ProjectsPage';
+import { ProjectDetailPage } from '@/pages/ProjectDetailPage';
+import { ChannelsPage } from '@/pages/ChannelsPage';
+import { ChannelDetailPage } from '@/pages/ChannelDetailPage';
+import { ChannelDocumentPage } from '@/pages/ChannelDocumentPage';
+import { TasksPage } from '@/pages/TasksPage';
+import { TaskDetailPage } from '@/pages/TaskDetailPage';
 import { Code2, Image as ImageIcon, Database, Bug } from 'lucide-react';
 import { ToastContainer } from '@/components/ui/Toast';
+import { RequireOrg } from '@/components/RequireOrg';
 import { useAuthStore } from '@/store/auth';
 
 function RequireAuth() {
@@ -64,17 +73,30 @@ export default function App() {
             <Route path="/user/security" element={<SecurityPage />} />
             <Route path="/user/sessions" element={<SessionsPage />} />
             <Route path="/user/invitations" element={<MyInvitationsPage />} />
-            <Route path="/org" element={<OrgPage />} />
-            <Route path="/org/members" element={<MembersPage />} />
-            <Route path="/org/roles" element={<RolesPage />} />
-            <Route path="/org/groups" element={<GroupsPage />} />
-            <Route path="/org/sources" element={<SourcesPage />} />
-            <Route path="/org/audit-log" element={<AuditLogPage />} />
-            {/* 老链接 /org/documents 重定向到新子路由，防止外部书签失效 */}
-            <Route path="/org/documents" element={<Navigate to="/org/knowledge/docs" replace />} />
-            {/* 文档详情独立子页:不挂在 KnowledgePage 的 tabs 之下,避免 tab 栏干扰阅读视图 */}
-            <Route path="/org/knowledge/docs/:id" element={<DocumentDetailPage />} />
-            <Route path="/org/knowledge" element={<KnowledgePage />}>
+            {/* 所有 /org/* 需要已选择组织;未选时 RequireOrg 重定向到 /user。
+                新加的组织级页面挂到这组里自动被守卫覆盖。 */}
+            <Route element={<RequireOrg />}>
+              <Route path="/org" element={<OrgPage />} />
+              <Route path="/org/members" element={<MembersPage />} />
+              <Route path="/org/roles" element={<RolesPage />} />
+              <Route path="/org/groups" element={<GroupsPage />} />
+              <Route path="/org/sources" element={<SourcesPage />} />
+              <Route path="/org/agents" element={<AgentsPage />} />
+              <Route path="/org/audit-log" element={<AuditLogPage />} />
+              {/* 协作:项目 / Channel / 任务(Synapse PR #2 / #4' / #6')*/}
+              <Route path="/org/projects" element={<ProjectsPage />} />
+              <Route path="/org/projects/:id" element={<ProjectDetailPage />} />
+              <Route path="/org/channels" element={<ChannelsPage />} />
+              <Route path="/org/channels/:id" element={<ChannelDetailPage />} />
+              {/* 共享文档详情页(PR #9'):独立路由,书签/分享友好 */}
+              <Route path="/org/channels/:id/documents/:doc_id" element={<ChannelDocumentPage />} />
+              <Route path="/org/tasks" element={<TasksPage />} />
+              <Route path="/org/tasks/:id" element={<TaskDetailPage /> } />
+              {/* 老链接 /org/documents 重定向到新子路由，防止外部书签失效 */}
+              <Route path="/org/documents" element={<Navigate to="/org/knowledge/docs" replace />} />
+              {/* 文档详情独立子页:不挂在 KnowledgePage 的 tabs 之下,避免 tab 栏干扰阅读视图 */}
+              <Route path="/org/knowledge/docs/:id" element={<DocumentDetailPage />} />
+              <Route path="/org/knowledge" element={<KnowledgePage />}>
               <Route index element={<Navigate to="docs" replace />} />
               <Route path="docs" element={<KnowledgeDocsTab />} />
               <Route
@@ -117,6 +139,7 @@ export default function App() {
                   />
                 }
               />
+            </Route>
             </Route>
           </Route>
         </Route>

@@ -13,7 +13,11 @@ import {
   Inbox,
   UsersRound,
   KeySquare,
+  Bot,
   History,
+  FolderGit2,
+  MessagesSquare,
+  ListChecks,
 } from 'lucide-react';
 import { useAuthStore } from '@/store/auth';
 import { useOrgStore } from '@/store/org';
@@ -26,6 +30,13 @@ const personalItems = [
   { label: '已登录设备', icon: Monitor, to: '/user/sessions' },
 ];
 
+// 协作分组 —— Synapse 的核心协作面。放在最靠前,登录后第一眼就能看到。
+const collabItems = [
+  { label: '项目', icon: FolderGit2, to: '/org/projects' },
+  { label: 'Channel', icon: MessagesSquare, to: '/org/channels' },
+  { label: '我的任务', icon: ListChecks, to: '/org/tasks' },
+];
+
 const navItems = [
   { label: '组织管理', icon: Building2, to: '/org' },
   { label: '成员', icon: Users, to: '/org/members' },
@@ -33,6 +44,7 @@ const navItems = [
   { label: '权限组', icon: UsersRound, to: '/org/groups' },
   { label: '知识源', icon: KeySquare, to: '/org/sources' },
   { label: '知识库', icon: BookOpen, to: '/org/knowledge' },
+  { label: 'Agents', icon: Bot, to: '/org/agents' },
   { label: '审计日志', icon: History, to: '/org/audit-log' },
 ];
 
@@ -83,6 +95,26 @@ export function Sidebar() {
             to={to}
             // /user 是 /user/security、/user/sessions 的前缀 —— 必须精确匹配才不会把三个导航项一起点亮
             end={to === '/user'}
+            className={({ isActive }) =>
+              clsx(
+                'flex items-center gap-2.5 px-2.5 py-[6px] rounded-md text-[14px] transition-colors duration-100',
+                isActive
+                  ? 'bg-[#2383e2]/[0.08] text-[#2383e2] font-medium'
+                  : 'text-text-secondary hover:bg-[#eeede8] hover:text-text-primary',
+              )
+            }
+          >
+            <Icon className="h-[18px] w-[18px]" strokeWidth={1.6} />
+            {label}
+          </NavLink>
+        ))}
+        <p className="px-2 pt-3 pb-1 text-[11px] font-medium text-text-muted uppercase tracking-wide">
+          协作
+        </p>
+        {collabItems.map(({ label, icon: Icon, to }) => (
+          <NavLink
+            key={to}
+            to={to}
             className={({ isActive }) =>
               clsx(
                 'flex items-center gap-2.5 px-2.5 py-[6px] rounded-md text-[14px] transition-colors duration-100',

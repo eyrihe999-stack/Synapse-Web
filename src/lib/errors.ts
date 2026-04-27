@@ -2,9 +2,16 @@
  * 后端业务错误码 → 用户友好的中文提示。
  *
  * 错误码格式: HHHSSCCCC
- *   HHH = HTTP 状态码, SS = 模块(01=user, 11=org, 12=agent), CCCC = 业务码
+ *   HHH = HTTP 状态码, SS = 模块(01=user, 11=org, 25=agents,详见各模块 errors.go), CCCC = 业务码
  */
 const ERROR_MESSAGES: Record<number, string> = {
+  // ── Agents 模块(25)──
+  400250010: '请求参数不合法',
+  400250011: '显示名称为空或超过 128 字符',
+  403250010: '无权限操作此 Agent(仅 owner / admin / 创建者可)',
+  404250020: 'Agent 不存在',
+  // 401 段是 WS 握手用,前端 HTTP 触不到,不展示
+
   // ── User 模块 ──
   400010010: '邮箱格式不正确',
   400010011: '密码长度不足，至少需要 8 个字符',

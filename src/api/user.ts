@@ -17,6 +17,9 @@ import type {
   DeleteAccountRequest,
   VerifyEmailRequest,
   SessionEntry,
+  CreatePATRequest,
+  CreatePATResponse,
+  PATListItem,
 } from '@/types/api';
 
 export const authApi = {
@@ -88,4 +91,23 @@ export const userApi = {
   // M1.1 重发邮箱激活邮件(60s per-user cooldown)。仅 pending_verify 账号有意义。
   resendVerification: () =>
     client.post<BaseResponse>('/v1/users/me/email/resend-verification', {}),
+};
+
+// ─── PAT(Personal Access Token)─────────────────────────────────────────────
+//
+// 给 user 自助管理"代表自己的客户端凭证":Cursor / Claude Desktop 接 MCP、
+// agent-bridge daemon 接 SSE 都用这个。后端路由 /api/v2/users/me/pats —— 注意是 v2,
+// 跟上面 user/auth 的 v1 不同(PAT 跟 OAuth 一组,在 /api/v2 下)。
+export const patApi = {
+  // 创建。返回里的 token 字段是**明文,只此一次**。前端关弹窗后再也拿不到。
+  create: (data: CreatePATRequest) =>
+    client.post<BaseResponse<CreatePATResponse>>('/v2/users/me/pats', data),
+
+  // 列表。不返 token(已无明文),只列元数据(label / created_at / last_used_at / revoked_at)。
+  list: () =>
+    client.get<BaseResponse<PATListItem[]>>('/v2/users/me/pats'),
+
+  // 吊销。仅可撤销自己的 PAT;吊销后该 PAT 立刻失效但仍留在 DB(revoked_at 标记)。
+  revoke: (id: number) =>
+    client.delete<BaseResponse>(`/v2/users/me/pats/${id}`),
 };
