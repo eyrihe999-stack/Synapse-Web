@@ -104,6 +104,40 @@ body {
 .markdown-body img { max-width: 100%; border-radius: 6px; }
 .markdown-body input[type="checkbox"] { margin-right: 0.4em; }
 
+/* ── Markdown chat (聊天气泡内的 agent 回复用) ──
+   基于 markdown-body 的紧凑变体:
+   - 字号 / 行距 / 标题 / 间距全面收缩,不在气泡里"占楼"
+   - strong 加蓝色高亮(关键决策点 / 数字一眼可见)
+   - 行内 code 强化背景色对比(id / pid / 路径醒目)
+   - blockquote 用蓝边 + 浅蓝底(paraphrase 用户意图时显眼) */
+.markdown-chat { font-size: 13px; line-height: 1.55; }
+.markdown-chat h1 { font-size: 16px; font-weight: 700; margin: 0.8em 0 0.4em; line-height: 1.3; padding-bottom: 0.2em; border-bottom: 1px solid var(--color-border-default); }
+.markdown-chat h2 { font-size: 15px; font-weight: 700; margin: 0.8em 0 0.4em; line-height: 1.3; padding-bottom: 0.2em; }
+.markdown-chat h3 { font-size: 14px; font-weight: 700; margin: 0.7em 0 0.3em; color: var(--color-accent); }
+.markdown-chat h4, .markdown-chat h5, .markdown-chat h6 { font-size: 13px; font-weight: 600; margin: 0.6em 0 0.3em; color: var(--color-text-primary); }
+.markdown-chat p { margin: 0.4em 0; }
+.markdown-chat ul, .markdown-chat ol { margin: 0.4em 0; padding-left: 1.4em; }
+.markdown-chat ul { list-style: disc; }
+.markdown-chat ol { list-style: decimal; }
+.markdown-chat li { margin: 0.15em 0; }
+.markdown-chat li > ul, .markdown-chat li > ol { margin: 0.15em 0; }
+.markdown-chat a { color: var(--color-accent); text-decoration: underline; text-underline-offset: 2px; }
+.markdown-chat a:hover { opacity: 0.8; }
+.markdown-chat blockquote { border-left: 3px solid var(--color-accent); padding: 0.3em 0.8em; color: var(--color-text-secondary); margin: 0.5em 0; background: rgba(35, 131, 226, 0.06); border-radius: 0 4px 4px 0; font-size: 12.5px; }
+.markdown-chat hr { border: none; border-top: 1px solid var(--color-border-default); margin: 0.8em 0; }
+.markdown-chat strong { font-weight: 700; color: var(--color-text-primary); }
+.markdown-chat em { font-style: italic; }
+.markdown-chat code { font-family: var(--font-mono); font-size: 0.85em; background: rgba(35, 131, 226, 0.1); color: var(--color-accent); border: 1px solid rgba(35, 131, 226, 0.2); border-radius: 3px; padding: 0.05em 0.35em; }
+.markdown-chat pre { background: var(--color-bg-elevated); border: 1px solid var(--color-border-default); border-radius: 6px; padding: 10px 12px; margin: 0.5em 0; overflow-x: auto; font-size: 12px; line-height: 1.5; }
+.markdown-chat pre code { background: transparent; border: none; padding: 0; color: inherit; font-size: inherit; }
+.markdown-chat table { border-collapse: collapse; margin: 0.6em 0; font-size: 12px; display: block; overflow-x: auto; }
+.markdown-chat th, .markdown-chat td { border: 1px solid var(--color-border-default); padding: 4px 8px; }
+.markdown-chat th { background: var(--color-bg-elevated); font-weight: 600; text-align: left; }
+.markdown-chat img { max-width: 100%; border-radius: 6px; }
+.markdown-chat input[type="checkbox"] { margin-right: 0.4em; }
+/* mark 标签:Architect 可用于二次强调("⚠️ 关键 / 决策点"等) */
+.markdown-chat mark { background: rgba(255, 220, 0, 0.4); color: var(--color-text-primary); padding: 0 0.2em; border-radius: 2px; }
+
 /* ── Workflow step 入场动画 ──
    新 step 插入时播一次;key 稳定不会重播,所以只在"真的新增"时有动画效果。 */
 @keyframes wf-step-in {

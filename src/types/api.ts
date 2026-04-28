@@ -533,9 +533,19 @@ export interface ListGroupMembersResponse {
 // 每个 doc 必属于一个 source;source 是权限承载者(visibility + ACL 都挂在 source 上)。
 // - manual_upload:默认收件箱,每 user 每 org lazy 创建一条
 // - custom:       用户自建的命名数据源,同一 owner 下 name 唯一
-// 后续扩展 kind:gitlab_repo / feishu_space 等
-export type SourceKind = 'manual_upload' | 'custom' | string;
+// SourceKind 取值。manual_upload / custom 是地基;gitlab_repo 是 PR-A 后接的同步源,
+// 走 owner 凭据拉 GitLab repo 文件 + webhook 增量同步。
+// 后续扩展:feishu_space 等
+export type SourceKind = 'manual_upload' | 'custom' | 'gitlab_repo' | string;
 export type SourceVisibility = 'org' | 'group' | 'private';
+
+// GitLab 同步状态:对应后端 model.SyncStatus*。
+//   - never:刚创建,从未同步过(后端字段为空串,前端用 'never' 占位)
+//   - running:有 active asyncjob 进行中
+//   - succeeded:上一次成功
+//   - auth_failed:PAT/OAuth 失效或 owner 看不到 repo,owner 必须重发凭据
+//   - failed:GitLab 5xx / 网络 / runner 抛错(可重试)
+export type GitLabSyncStatus = 'never' | 'running' | 'succeeded' | 'auth_failed' | 'failed';
 
 export interface SourceResponse {
   id: string;
@@ -547,6 +557,14 @@ export interface SourceResponse {
   visibility: SourceVisibility;
   created_at: number;
   updated_at: number;
+
+  // ── GitLab 专属(其他 kind 留空)──
+  gitlab_branch?: string;
+  // last_sync_status 后端可能给空串(从未同步)— 视图层归一为 'never'
+  last_sync_status?: string;
+  last_synced_at?: number;
+  last_synced_commit?: string;
+  last_sync_error?: string;
 }
 
 export interface ListSourcesResponse {
@@ -564,6 +582,51 @@ export interface UpdateVisibilityRequest {
 export interface CreateSourceRequest {
   name: string;
   visibility?: SourceVisibility;
+}
+
+// ── GitLab 同步源 ──
+// owner-only 操作(端点 RequirePerm 'integration.gitlab.manage')。
+// PAT 由 owner 在 GitLab 自己生成,scope 至少需 read_api + read_repository。
+export interface CreateGitLabSourceRequest {
+  base_url?: string; // 空 → https://gitlab.com;自托管填 https://gitlab.example.com
+  pat: string; // GitLab Personal Access Token
+  project_id: string; // GitLab project 数字 id(string,JS 大数安全)
+  branch?: string; // 空 → 'main'
+  visibility?: SourceVisibility;
+}
+
+// CreateGitLabSourceResponse webhook_secret 是**唯一一次**返明文的机会。
+// 创建后立刻拷给 GitLab Project → Settings → Webhooks 的 Secret Token 字段。
+//
+// webhook_url 后端按 cfg.Server.PublicBaseURL(fallback OAuth.Issuer)拼出的完整公网 URL;
+// 服务端没配公网基址 → 字段空,前端 fallback 到 window.location.origin 拼并显示 localhost 警告。
+export interface CreateGitLabSourceResponse {
+  source: SourceResponse;
+  webhook_secret: string;
+  webhook_url?: string;
+  job_id: string; // 首次全量同步 asyncjob id
+}
+
+export interface TriggerResyncResponse {
+  job_id: string;
+}
+
+// GitLabSyncStatusResponse 单 GitLab source 当前 / 最近一次同步任务的状态。
+//
+// 从未同步过 → status='never' + 其他字段零值。
+// running / queued:Progress* 实时变化,前端轮询展示;heartbeat_at 用来检测 runner 是否卡。
+// 终态:finished_at 非零;error 仅 status=failed/canceled 时非空。
+export interface GitLabSyncStatusResponse {
+  job_id?: string;
+  status: 'never' | 'queued' | 'running' | 'succeeded' | 'failed' | 'canceled' | string;
+  mode?: 'full' | 'incremental' | '';
+  progress_done: number;
+  progress_total: number;
+  progress_failed: number;
+  started_at?: number; // unix seconds
+  finished_at?: number;
+  heartbeat_at?: number;
+  error?: string;
 }
 
 // ── Source ACL (M3) ──
@@ -744,23 +807,134 @@ export interface CreateProjectRequest {
 }
 
 // ── Version ──
-// 当前 PR 暂不暴露 UI,但保留类型以便 Project 详情页列出。
+// 时间轴维度:什么时候发(里程碑 / sprint / fix-version 都用这个)。
+// 后端 pm.IsValidVersionStatus:planning / active / released / cancelled。
+// (没有 archived;version 的"结束"语义就是 released 或 cancelled。)
+export type VersionStatus = 'planning' | 'active' | 'released' | 'cancelled';
+
 export interface VersionResponse {
   id: number;
   project_id: number;
   name: string;
-  status: string;
+  status: VersionStatus | string;
   target_date?: string;
+  released_at?: string;
+  is_system?: boolean;
+  created_by?: number;
   created_at: string;
+  updated_at?: string;
 }
 
 export interface CreateVersionRequest {
   name: string;
   status: string;
+  target_date?: string;
+}
+
+export interface UpdateVersionRequest {
+  status?: string;
+  target_date?: string;
+  released_at?: string;
+}
+
+// ── Initiative ──
+// 主题轴维度:为什么做。Initiative ⊥ Version 是正交两维,Workstream 是网格颗粒。
+// 后端 pm.IsValidInitiativeStatus:planned / active / completed / cancelled。
+// archive 动作触发 active→completed 自动转换 + 写 archived_at。
+export type InitiativeStatus = 'planned' | 'active' | 'completed' | 'cancelled';
+
+export interface InitiativeResponse {
+  id: number;
+  project_id: number;
+  name: string;
+  description?: string;
+  target_outcome?: string;
+  status: InitiativeStatus | string;
+  is_system?: boolean;
+  created_by: number;
+  created_at: string;
+  updated_at: string;
+  archived_at?: string;
+}
+
+export interface CreateInitiativeRequest {
+  name: string;
+  description?: string;
+  target_outcome?: string;
+}
+
+export interface UpdateInitiativeRequest {
+  name?: string;
+  description?: string;
+  target_outcome?: string;
+  status?: string;
+}
+
+// ── Workstream ──
+// Initiative × Version 网格上的执行颗粒。version_id=null/undefined 表示 backlog(未排期)。
+// 后端 pm.IsValidWorkstreamStatus:draft / active / blocked / done / cancelled。
+export type WorkstreamStatus = 'draft' | 'active' | 'blocked' | 'done' | 'cancelled';
+
+export interface WorkstreamResponse {
+  id: number;
+  initiative_id: number;
+  version_id?: number;
+  project_id: number;
+  name: string;
+  description?: string;
+  status: WorkstreamStatus | string;
+  channel_id?: number;
+  created_by: number;
+  created_at: string;
+  updated_at: string;
+  archived_at?: string;
+}
+
+export interface CreateWorkstreamRequest {
+  name: string;
+  description?: string;
+  version_id?: number;
+}
+
+export interface UpdateWorkstreamRequest {
+  name?: string;
+  description?: string;
+  status?: string;
+  version_id?: number;
+}
+
+// ── Project KB Ref ──
+// 二选一:挂 source 或 doc。
+export interface ProjectKBRefResponse {
+  id: number;
+  project_id: number;
+  kb_source_id?: number;
+  kb_document_id?: number;
+  attached_by: number;
+  attached_at: string;
+}
+
+export interface AttachProjectKBRefRequest {
+  kb_source_id?: number;
+  kb_document_id?: number;
+}
+
+// ── Roadmap 聚合视图 ──
+// GET /api/v2/projects/:id/roadmap 返回的形状。后端已过滤 archived initiative /
+// archived workstream / cancelled version,前端按 id 自己交叉关联。
+export interface ProjectRoadmapResponse {
+  project_id: number;
+  initiatives: InitiativeResponse[];
+  versions: VersionResponse[];
+  workstreams: WorkstreamResponse[];
 }
 
 // ── Channel ──
 export type ChannelStatus = 'open' | 'archived';
+
+// kind=='regular' 是默认普通 channel;kind=='project_console' 是 Project Architect
+// agent 的工作间(每个 project 自动有一个,workstream_id IS NULL)。
+export type ChannelKind = 'regular' | 'project_console';
 
 export interface ChannelResponse {
   id: number;
@@ -769,6 +943,8 @@ export interface ChannelResponse {
   name: string;
   purpose?: string;
   status: ChannelStatus;
+  kind: ChannelKind | string;
+  workstream_id?: number;
   created_by: number;
   created_at: string;
   updated_at: string;
@@ -782,7 +958,9 @@ export interface CreateChannelRequest {
 }
 
 // ── Channel Member ──
-export type ChannelMemberRole = 'owner' | 'member' | 'observer';
+// admin:系统 agent(如 Project Architect)进入 project_console 时由 pmevent consumer
+// 直接 INSERT 写入,人手不可 PATCH 设(后端 isValidMemberRole 拒绝)。
+export type ChannelMemberRole = 'owner' | 'admin' | 'member' | 'observer';
 
 export interface ChannelMemberResponse {
   channel_id: number;

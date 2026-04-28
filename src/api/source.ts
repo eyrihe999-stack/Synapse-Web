@@ -9,6 +9,10 @@ import type {
   ListSourcesResponse,
   UpdateVisibilityRequest,
   CreateSourceRequest,
+  CreateGitLabSourceRequest,
+  CreateGitLabSourceResponse,
+  TriggerResyncResponse,
+  GitLabSyncStatusResponse,
   ListSourceACLResponse,
   GrantSourceACLRequest,
   UpdateSourceACLRequest,
@@ -49,6 +53,32 @@ export const sourceApi = {
   // 删除 source(仅 owner)。前提:该 source 下所有 doc 已被清空,否则后端返 409/CodeSourceHasDocuments。
   remove: (slug: string, sourceId: string) =>
     client.delete<BaseResponse>(`/v2/orgs/${slug}/sources/${sourceId}`),
+
+  // ─ GitLab 同步源 ─
+  // 端点都挂 RequirePerm('integration.gitlab.manage')—— 默认只 org owner 拿到该 perm。
+  // 创建响应里的 webhook_secret 是**唯一一次**返明文,owner 必须立刻拷给 GitLab UI。
+
+  createGitLab: (slug: string, data: CreateGitLabSourceRequest) =>
+    client.post<BaseResponse<CreateGitLabSourceResponse>>(
+      `/v2/orgs/${slug}/sources/gitlab`,
+      data,
+    ),
+
+  removeGitLab: (slug: string, sourceId: string) =>
+    client.delete<BaseResponse>(`/v2/orgs/${slug}/sources/gitlab/${sourceId}`),
+
+  // 触发重新全量同步。后端走幂等键 'gitlab:<id>:full',已有 active job 会复用 jobID。
+  triggerGitLabResync: (slug: string, sourceId: string) =>
+    client.post<BaseResponse<TriggerResyncResponse>>(
+      `/v2/orgs/${slug}/sources/gitlab/${sourceId}/resync`,
+    ),
+
+  // 查 GitLab source 当前 / 最近一次同步任务的状态。前端轮询此端点展示进度。
+  // 从未同步过 → status='never';终态 → finished_at 非零。
+  getGitLabSyncStatus: (slug: string, sourceId: string) =>
+    client.get<BaseResponse<GitLabSyncStatusResponse>>(
+      `/v2/orgs/${slug}/sources/gitlab/${sourceId}/sync-status`,
+    ),
 
   // ─ ACL ─
 

@@ -216,7 +216,13 @@ export function KnowledgeDocsTab() {
     }
     setLoading(true);
     try {
-      const res = await documentApi.list(slug, { limit: 20, ...params });
+      // 知识库文档页展示用户主动整理的文档:manual_upload(默认收件箱)+ custom(自建数据源)。
+      // GitLab 同步进来的代码文件(kind=gitlab_repo)走各自专属页面。
+      const res = await documentApi.list(slug, {
+        limit: 20,
+        sourceKinds: ['manual_upload', 'custom'],
+        ...params,
+      });
       const r = res.data.result;
       setDocs(r?.docs ?? []);
       setNextCursor(r?.next_cursor);
@@ -352,6 +358,7 @@ export function KnowledgeDocsTab() {
       const res = await documentApi.list(slug, {
         beforeId: nextCursor,
         limit: 20,
+        sourceKinds: ['manual_upload', 'custom'],
         ...params,
       });
       const r = res.data.result;

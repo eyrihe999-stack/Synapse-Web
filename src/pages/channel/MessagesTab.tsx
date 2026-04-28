@@ -676,7 +676,7 @@ export function MessagesTab({ channelId, members, principalDirByID }: MessagesTa
                         最长前缀匹配 channel 内的 displayName,所以 "@Eyri He" 这种带
                         空格的名字也能完整高亮,不会被切到 "@Eyri" 就停。 */}
                     {cls === 'agent-global' || cls === 'agent' ? (
-                      <div className="prose prose-sm max-w-none [&_p]:my-1 [&_pre]:my-1">
+                      <div className="markdown-chat">
                         <ReactMarkdown
                           remarkPlugins={[remarkGfm]}
                           components={{

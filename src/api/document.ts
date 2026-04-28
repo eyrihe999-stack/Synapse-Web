@@ -22,6 +22,8 @@ export interface ListDocsOptions {
   docId?: string;
   /** 精确按 doc.knowledge_source_id 过滤;非空数字字符串。 */
   sourceId?: string;
+  /** 按 source.kind 过滤;多值(知识库文档页传 ['manual_upload'] 排除 GitLab 同步进来的代码文件)。 */
+  sourceKinds?: string[];
   // 翻页 cursor:用上一页 next_cursor(后端 snowflake uint64 字符串)。axios 拼 query 会按 value.toString() 序列化,字符串直接放进 URL。
   beforeId?: string;
   limit?: number;
@@ -50,6 +52,9 @@ export const documentApi = {
         q: opts?.query?.trim() || undefined,
         doc_id: opts?.docId?.trim() || undefined,
         source_id: opts?.sourceId?.trim() || undefined,
+        source_kind: opts?.sourceKinds?.length
+          ? opts.sourceKinds.join(',')
+          : undefined,
         before_id: opts?.beforeId || undefined,
         limit: opts?.limit || undefined,
       },

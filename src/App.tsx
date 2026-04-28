@@ -19,6 +19,7 @@ import { InvitePage } from '@/pages/InvitePage';
 import { MyInvitationsPage } from '@/pages/MyInvitationsPage';
 import { KnowledgePage } from '@/pages/KnowledgePage';
 import { KnowledgeDocsTab } from '@/pages/knowledge/KnowledgeDocsTab';
+import { KnowledgeCodeTab } from '@/pages/knowledge/KnowledgeCodeTab';
 import { DocumentDetailPage } from '@/pages/knowledge/DocumentDetailPage';
 import { ComingSoon } from '@/pages/knowledge/ComingSoon';
 import { ProjectsPage } from '@/pages/ProjectsPage';
@@ -28,7 +29,7 @@ import { ChannelDetailPage } from '@/pages/ChannelDetailPage';
 import { ChannelDocumentPage } from '@/pages/ChannelDocumentPage';
 import { TasksPage } from '@/pages/TasksPage';
 import { TaskDetailPage } from '@/pages/TaskDetailPage';
-import { Code2, Image as ImageIcon, Database, Bug } from 'lucide-react';
+import { Image as ImageIcon, Database, Bug } from 'lucide-react';
 import { ToastContainer } from '@/components/ui/Toast';
 import { RequireOrg } from '@/components/RequireOrg';
 import { useAuthStore } from '@/store/auth';
@@ -99,16 +100,7 @@ export default function App() {
               <Route path="/org/knowledge" element={<KnowledgePage />}>
               <Route index element={<Navigate to="docs" replace />} />
               <Route path="docs" element={<KnowledgeDocsTab />} />
-              <Route
-                path="code"
-                element={
-                  <ComingSoon
-                    icon={Code2}
-                    title="代码仓库"
-                    description="接入 Git 仓库后按路径 / 符号 / 注释建立代码级索引，让 agent 理解工程结构与实现细节。"
-                  />
-                }
-              />
+              <Route path="code" element={<KnowledgeCodeTab />} />
               <Route
                 path="images"
                 element={

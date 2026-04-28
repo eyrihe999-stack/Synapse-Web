@@ -9,7 +9,7 @@
 //
 // 目前只提供"从当前 org 的 principal 里挑人加入";不支持邀请 org 外的 principal。
 import { useState } from 'react';
-import { Plus, X, Shield, UserCircle2, Bot, Globe2, Crown, Eye, RefreshCw } from 'lucide-react';
+import { Plus, X, Shield, UserCircle2, Bot, Globe2, Crown, Eye, RefreshCw, Wrench } from 'lucide-react';
 import { clsx } from 'clsx';
 import { Button } from '@/components/ui/Button';
 import { Modal } from '@/components/ui/Modal';
@@ -69,12 +69,19 @@ function KindBadge({ entry }: { entry: PrincipalDirEntry }) {
 
 const ROLE_META: Record<
   ChannelMemberRole,
-  { label: string; tone: 'amber' | 'blue' | 'neutral'; icon: typeof Crown }
+  { label: string; tone: 'amber' | 'blue' | 'neutral' | 'purple'; icon: typeof Crown }
 > = {
   owner: { label: '所有者', tone: 'amber', icon: Crown },
+  admin: { label: '管理员', tone: 'purple', icon: Wrench },
   member: { label: '成员', tone: 'blue', icon: Shield },
   observer: { label: '观察者', tone: 'neutral', icon: Eye },
 };
+
+// owner / admin 都不可被 owner 通过 UI 改角色或移除:owner 是 channel 唯一所有者;
+// admin 只属于系统 agent(由 pmevent consumer 直接 INSERT),人手不能 PATCH 设回去。
+function isImmutableRole(role: ChannelMemberRole): boolean {
+  return role === 'owner' || role === 'admin';
+}
 
 export function MembersTab({
   channelId,
@@ -222,7 +229,7 @@ export function MembersTab({
                   <p className="text-[11px] text-text-muted truncate font-mono">{entry.secondary}</p>
                 )}
               </div>
-              {canManage && m.role !== 'owner' ? (
+              {canManage && !isImmutableRole(m.role) ? (
                 <select
                   value={m.role}
                   onChange={(e) => changeRole(m, e.target.value as ChannelMemberRole)}
@@ -236,7 +243,7 @@ export function MembersTab({
                   {ROLE_META[m.role].label}
                 </StatusChip>
               )}
-              {canManage && m.role !== 'owner' && (
+              {canManage && !isImmutableRole(m.role) && (
                 <button
                   onClick={() => removeMember(m)}
                   className="p-1 text-text-muted hover:text-[#d44c47]"

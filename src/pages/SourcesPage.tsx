@@ -383,6 +383,8 @@ function kindLabel(kind: string): string {
       return '手动上传';
     case 'custom':
       return '自建';
+    case 'gitlab_repo':
+      return 'GitLab';
     default:
       return kind;
   }
